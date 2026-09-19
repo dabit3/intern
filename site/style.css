@@ -43,7 +43,7 @@ body {
 main {
   width: min(100% - 48px, 760px);
   margin: 0 auto;
-  padding: clamp(80px, 12vh, 120px) 0 96px;
+  padding: clamp(80px, 10vh, 120px) 0 96px;
 }
 
 a { color: inherit; }
@@ -130,7 +130,7 @@ h1 {
   --p-mono: ui-monospace, "SF Mono", Menlo, monospace;
 
   width: calc(680 * var(--u));
-  margin: clamp(56px, 8vh, 80px) auto 0;
+  margin: clamp(48px, 6vh, 64px) auto 0;
   background: var(--p-bg);
   color: var(--p-text);
   border: 1px solid var(--p-border);
