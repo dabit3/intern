@@ -1,0 +1,48 @@
+name: Launcher
+options:
+  bundleIdPrefix: com.devin.typesafe
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_STRICT_CONCURRENCY: complete
+targets:
+  Launcher:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.devin.typesafe.jev-launcher
+        INFOPLIST_KEY_CFBundleDisplayName: Launcher
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Launcher sends Apple Events to System Events and Finder to run system toggles such as Dark Mode, Sleep and Empty Trash.
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+  LauncherTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests
+    dependencies:
+      - target: Launcher
+schemes:
+  Launcher:
+    build:
+      targets:
+        Launcher: all
+        LauncherTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - LauncherTests
