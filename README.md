@@ -4,11 +4,9 @@
 
 A native macOS launcher for things you remember by meaning: `the last pdf I opened`, `files I used in the last hour`, `open the devin ambassador links I visited today`. Press ⌥Space, describe what you need, and press Enter. Local search finds candidates, [Jev](https://docs.typesafe.ai) judges your intent on each keystroke, and the selected result opens. Pin frequent items, preview files, edit a matching group, or save it as a workspace you can reopen by name.
 
-![Typing the five demo queries against the live Jev API](docs/demo.gif)
+![Six Launcher examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
 
-![Open all 3 links: the group row on top, members checked, unrelated visits from the same day unchecked](docs/set-ambassador.png)
-
-These captures show the earlier single-target and group experiences. The current panel also has search scopes and an Actions menu.
+The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
 ## Why speed matters
 
