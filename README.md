@@ -8,6 +8,29 @@ A native macOS launcher for things you remember by meaning: `the last pdf I open
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
+## Twenty things you can do
+
+- Describe a file instead of naming it.
+- `the pdf I just downloaded` opens the newest one.
+- `the last pdf I opened`, judged by actual open dates.
+- `files I modified yesterday`, filtered before Jev sees them.
+- Toggle dark mode with one word.
+- `wifi off` beats `wifi on`, same fuzzy score.
+- Sleep, lock the screen or empty the Trash.
+- `15% of 240` gives `36` inline; Enter copies it.
+- Re-ranked on every keystroke, about 100 ms.
+- Green ↵ appears the moment your intent is unambiguous.
+- Reopen the Chrome pages you visited today.
+- `open the ambassador links I visited this week`, all at once.
+- Time windows like `last hour` or `a few days ago`.
+- Group the files you used this morning into one Open all.
+- Uncheck a member before opening the group.
+- Save a group as a workspace and recall it by name.
+- Quick Look a file without leaving the panel.
+- Reveal in Finder, copy a path or pin anything.
+- Scopes for files, apps, links and workspaces.
+- Frequent launches float up; clear the history any time.
+
 ## Why speed matters
 
 A launcher is judged per keystroke. Previous single-target runs measured about 100 ms per Jev round trip from this VM. Local results appear immediately; Jev refines them when its answer arrives. Superseded requests are canceled, old responses are rejected, and manually selected rows stay selected when ranking changes. Spotlight searches in parallel and can trigger a fresh judgment when it finds more candidates.
