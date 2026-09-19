@@ -1,5 +1,7 @@
 # Launcher
 
+![Launcher homepage with the Download button, Built with Devin attribution, and launcher preview](docs/homepage.png)
+
 A Spotlight-style launcher for macOS that reads intent, not strings. Press ⌥Space and type the way you would say it: `dark`, `wifi off`, `15% of 240`, `the pdf I just downloaded`, `open the devin ambassador links I visited in the past 24 hours`. On every keystroke the panel sends what you typed, a little local context and the best local candidates to [Jev](https://docs.typesafe.ai) in one request. Jev answers a handful of typed questions (which candidate, what kind of action, one item or all of them, which rows fit, is this settled enough to run on Enter), the list re-ranks live, and when the intent is clear the top row gets a green ↵. Enter runs it: one file, one toggle, or a whole set of links at once.
 
 ![Typing the five demo queries against the live Jev API](docs/demo.gif)
