@@ -1,5 +1,7 @@
 # Launcher
 
+[![Built with Devin](https://img.shields.io/badge/Built%20with-Devin-1a1a1a?style=for-the-badge)](https://devin.ai)
+
 ![Launcher homepage with the Download button, Built with Devin attribution, and launcher preview](docs/homepage.png)
 
 A native macOS launcher for things you remember by meaning: `the last pdf I opened`, `files I used in the last hour`, `open the devin ambassador links I visited today`. Press ⌥Space, describe what you need, and press Enter. Local search finds candidates, [Jev](https://docs.typesafe.ai) judges your intent on each keystroke, and the selected result opens. Pin frequent items, preview files, edit a matching group, or save it as a workspace you can reopen by name.
