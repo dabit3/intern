@@ -1,9 +1,8 @@
 import Foundation
 import SQLite3
 
-/// Reads Google Chrome's local history database into candidates. Chrome keeps the file locked
-/// while running, so it is copied to a private location first. Only title, URL and last-visit
-/// time leave this type; nothing is written back and nothing is logged.
+/// Reads a consistent, read-only SQLite snapshot, including committed WAL visits.
+/// Only title, URL and last-visit time leave this type; nothing is logged.
 enum ChromeHistory {
   static let maxEntries = 3_000
   /// Visits older than this are not indexed at all.
@@ -18,16 +17,40 @@ enum ChromeHistory {
     let visitCount: Int
   }
 
-  /// The History files of every Chrome profile that exists, newest profile first.
+  private struct LocalState: Decodable {
+    struct Profile: Decodable {
+      struct Info: Decodable {}
+      let infoCache: [String: Info]?
+      enum CodingKeys: String, CodingKey { case infoCache = "info_cache" }
+    }
+    let profile: Profile?
+  }
+
+  /// Regular Chrome profiles, including named profiles registered in Local State.
   static func databaseURLs(fileManager: FileManager = .default) -> [URL] {
+    guard !Task.isCancelled else { return [] }
     let root = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(profileRoot)
     guard let names = try? fileManager.contentsOfDirectory(atPath: root.path) else { return [] }
+    var profiles = Set(names.filter { $0 == "Default" || $0.hasPrefix("Profile ") })
+    if !Task.isCancelled,
+      let data = try? Data(contentsOf: root.appendingPathComponent("Local State")),
+      let state = try? JSONDecoder().decode(LocalState.self, from: data),
+      let registered = state.profile?.infoCache
+    {
+      profiles.formUnion(registered.keys)
+    }
     return
-      names
-      .filter { $0 == "Default" || $0.hasPrefix("Profile ") }
+      profiles
+      .filter {
+        !$0.isEmpty && !$0.hasPrefix(".") && !$0.contains("/")
+          && $0 != "Guest Profile" && $0 != "System Profile"
+      }
       .sorted()
       .map { root.appendingPathComponent($0).appendingPathComponent("History") }
-      .filter { fileManager.fileExists(atPath: $0.path) }
+      .filter {
+        !Task.isCancelled && fileManager.fileExists(atPath: $0.path)
+          && $0.resolvingSymlinksInPath().path.hasPrefix(root.resolvingSymlinksInPath().path + "/")
+      }
   }
 
   /// Chrome stores times as microseconds since 1601-01-01 UTC (the Windows epoch).
@@ -42,36 +65,64 @@ enum ChromeHistory {
   static func load(fileManager: FileManager = .default, now: Date = Date()) -> [Entry] {
     var merged: [URL: Entry] = [:]
     for database in databaseURLs(fileManager: fileManager) {
+      guard !Task.isCancelled else { break }
       for entry in read(database: database, fileManager: fileManager, now: now) {
+        guard !Task.isCancelled else { break }
         if let existing = merged[entry.url], existing.lastVisit >= entry.lastVisit { continue }
         merged[entry.url] = entry
       }
+      if merged.count > maxEntries {
+        merged = Dictionary(
+          uniqueKeysWithValues: merged.values.sorted(by: newestFirst).prefix(maxEntries).map {
+            ($0.url, $0)
+          })
+      }
     }
-    return merged.values.sorted { $0.lastVisit > $1.lastVisit }
+    return merged.values.sorted(by: newestFirst)
+  }
+
+  private static func newestFirst(_ lhs: Entry, _ rhs: Entry) -> Bool {
+    lhs.lastVisit == rhs.lastVisit
+      ? lhs.url.absoluteString < rhs.url.absoluteString : lhs.lastVisit > rhs.lastVisit
   }
 
   static func read(database: URL, fileManager: FileManager, now: Date) -> [Entry] {
-    let scratch = fileManager.temporaryDirectory.appendingPathComponent(
-      "jev-launcher-history-\(UUID().uuidString).sqlite")
-    defer { try? fileManager.removeItem(at: scratch) }
-    do {
-      try fileManager.copyItem(at: database, to: scratch)
-    } catch {
-      return []
-    }
-    return query(copy: scratch, now: now)
+    guard !Task.isCancelled, fileManager.fileExists(atPath: database.path) else { return [] }
+    return query(copy: database, now: now)
+  }
+
+  private final class QueryBudget {
+    let deadline = ProcessInfo.processInfo.systemUptime + 2
+    var expired: Bool { Task.isCancelled || ProcessInfo.processInfo.systemUptime >= deadline }
   }
 
   static func query(copy: URL, now: Date) -> [Entry] {
+    guard !Task.isCancelled else { return [] }
     var handle: OpaquePointer?
     guard sqlite3_open_v2(copy.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
       let db = handle
-    else { return [] }
+    else {
+      if let handle { sqlite3_close(handle) }
+      return []
+    }
     defer { sqlite3_close(db) }
+    sqlite3_busy_timeout(db, 50)
+    let budget = QueryBudget()
+    sqlite3_progress_handler(
+      db, 1_000,
+      { context in
+        guard let context else { return 1 }
+        return Unmanaged<QueryBudget>.fromOpaque(context).takeUnretainedValue().expired ? 1 : 0
+      }, Unmanaged.passUnretained(budget).toOpaque())
+    defer {
+      sqlite3_progress_handler(db, 0, nil, nil)
+      withExtendedLifetime(budget) {}
+    }
     let sql = """
       SELECT url, title, last_visit_time, visit_count FROM urls
-      WHERE last_visit_time > ? AND hidden = 0
-      ORDER BY last_visit_time DESC LIMIT ?
+      WHERE last_visit_time > ? AND last_visit_time <= ? AND hidden = 0
+        AND (url LIKE 'https://_%' OR url LIKE 'http://_%')
+      ORDER BY last_visit_time DESC, url ASC LIMIT ?
       """
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
@@ -80,30 +131,38 @@ enum ChromeHistory {
     defer { sqlite3_finalize(statement) }
     let oldest = now.addingTimeInterval(-maxAgeDays * 86_400)
     sqlite3_bind_int64(statement, 1, chromeTime(from: oldest))
-    sqlite3_bind_int(statement, 2, Int32(maxEntries))
+    sqlite3_bind_int64(statement, 2, chromeTime(from: now))
+    sqlite3_bind_int(statement, 3, Int32(maxEntries))
     var entries: [Entry] = []
-    while sqlite3_step(statement) == SQLITE_ROW {
+    while !budget.expired, sqlite3_step(statement) == SQLITE_ROW {
       guard let rawURL = sqlite3_column_text(statement, 0),
         let url = URL(string: String(cString: rawURL)),
-        let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
+        let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+        let host = url.host, !host.isEmpty
       else { continue }
       let title = sqlite3_column_text(statement, 1).map { String(cString: $0) } ?? ""
       entries.append(
         Entry(
           url: url, title: title,
           lastVisit: date(fromChromeTime: sqlite3_column_int64(statement, 2)),
-          visitCount: Int(sqlite3_column_int(statement, 3))))
+          visitCount: max(0, Int(sqlite3_column_int64(statement, 3)))))
     }
     return entries
   }
 
   static func candidates(from entries: [Entry], now: Date) -> [Candidate] {
-    entries.map { candidate(for: $0, now: now) }
+    var candidates: [Candidate] = []
+    for entry in entries.prefix(maxEntries) {
+      guard !Task.isCancelled else { break }
+      candidates.append(candidate(for: entry, now: now))
+    }
+    return candidates
   }
 
   static func candidate(for entry: Entry, now: Date) -> Candidate {
     let host = displayHost(entry.url)
-    let title = entry.title.isEmpty ? host : entry.title
+    let trimmedTitle = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+    let title = trimmedTitle.isEmpty ? host : trimmedTitle
     let ageDays = max(0, now.timeIntervalSince(entry.lastVisit)) / 86_400
     var keywords = [
       "link", "links", "page", "site", "website", "url", "tab", "tabs", "visited", "history",
