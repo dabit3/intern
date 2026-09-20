@@ -309,7 +309,6 @@ final class InternModel: ObservableObject {
     isIndexing = true
     let includeHistory = preferences.history
     let buildIndex = buildIndex
-    let indexStore = indexStore
     indexTask = Task(priority: .userInitiated) { [weak self] in
       let built = await buildIndex(includeHistory)
       guard let self, !Task.isCancelled, generation == self.indexGeneration else { return }
