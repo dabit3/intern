@@ -339,10 +339,12 @@ struct HitRow: View {
       }
     }
     .padding(.horizontal, 12)
+    .frame(maxHeight: .infinity)
     .background(
       RoundedRectangle(cornerRadius: 10, style: .continuous)
         .fill(selected ? Theme.surface : Color.clear)
     )
+    .padding(.vertical, 2)
     .animation(.easeOut(duration: 0.12), value: ready)
     .animation(.easeOut(duration: 0.12), value: hit.inSet)
     .contentShape(Rectangle())
