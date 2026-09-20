@@ -104,6 +104,7 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 
 ### Personal library and actions
 
+1. In Settings, edit the TypeSafe API key and confirm **Unsaved changes** appears while the previous saved key remains in use. Click **Save** (also test Command-S and Return from the field); confirm **API key saved** and a disabled Save button. Reopen Settings and relaunch to verify persistence. Clear the field and save to verify **No API key saved**. Use a dummy key with local-only mode for this check and restore the original settings afterward; never expose a real key in recordings or logs.
 1. Pin an app or file with ⌘P. Clear the query and confirm it appears on the home screen; restart and verify persistence.
 2. Launch a file, reopen the panel, and confirm it appears among recent items.
 3. Open ⌘K, navigate with arrows, and press Enter on an action. The selected candidate must remain stable if Jev replies while the menu is open.

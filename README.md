@@ -21,7 +21,21 @@ The first five examples show live Jev ranking against single targets. The final 
 3. Open Intern from Applications.
 4. Press Option-Space to open the launcher.
 
-Intern runs in the menu bar, not the Dock. For AI ranking, add your TypeSafe API key in Settings. Without a key, local search remains available.
+Intern runs in the menu bar, not the Dock.
+
+## First-time setup
+
+**You need a TypeSafe API key for AI-powered ranking.** Local search works without one.
+
+1. Sign in to the [TypeSafe dashboard](https://console.typesafe.ai/keys) and get an API key. See the [TypeSafe quick start](https://docs.typesafe.ai/introduction/quickstart) for more details.
+2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**.
+3. In the **TypeSafe** section, paste your key into **API key** and click **Save** (or press **Command-S**). **Unsaved changes** becomes **API key saved** once it is stored. No terminal command is needed for the downloaded app.
+4. Under **Search and privacy**, leave **Keep searches on this Mac** turned off to enable online ranking. You can also choose whether to search files with Spotlight and include Chrome browsing history.
+5. Close Settings, press **Option-Space**, and try `the pdf I just downloaded`. Press **Return** to open the selected result. Allow access to folders you want to search when macOS asks.
+
+If online ranking is unavailable, Intern keeps showing local results. Check that your API key is valid, your Mac is online, and **Keep searches on this Mac** is off. Turn that setting on whenever you want local-only search; it disables TypeSafe requests even with a key configured.
+
+To replace your key, edit the field and click **Save** again. To remove it, clear the field and save; the status becomes **No API key saved**. The saved status confirms storage, not API validation. When running from a terminal, a nonempty `TYPESAFE_API_KEY` environment variable takes precedence over the saved key.
 
 ## What Intern does
 
@@ -195,7 +209,7 @@ The `ready` wording went through several rounds against the five queries plus de
 
 ## Run
 
-Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key for online ranking, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) if you change `project.yml` or add/remove source or test files (the generated project is committed).
+Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a [TypeSafe API key](https://console.typesafe.ai/keys) for online ranking, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) if you change `project.yml` or add/remove source or test files (the generated project is committed).
 
 ```sh
 git clone https://github.com/dabit3/intern.git
