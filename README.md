@@ -16,8 +16,6 @@ The first five examples show live Jev ranking against single targets. The final 
 - `the pdf I just downloaded` opens the newest one, judged by when it arrived.
 - `the last pdf I opened`, judged by actual open dates, not edits.
 - `files I modified yesterday`, filtered by time window before Jev sees them.
-- Re-ranked by meaning on every keystroke, about 100 ms.
-- Green ↵ appears the moment your intent is unambiguous.
 - `the devin links I visited today` reopens the Chrome pages you mean.
 - `open the ambassador links I visited this week`, all at once.
 - Time windows like `last hour`, `this morning` or `a few days ago`.
@@ -27,6 +25,8 @@ The first five examples show live Jev ranking against single targets. The final 
 - Save a group as a workspace and recall it by description.
 - Chrome history stays on your Mac; only matching rows are judged.
 - Frequent launches float up; clear the history any time.
+- Everything above is re-ranked by meaning on every keystroke, about 100 ms.
+- A green ↵ appears the moment your intent is unambiguous.
 
 You can also do the usual launcher things: open apps and files, toggle dark mode, turn Wi-Fi on or off, sleep or lock the screen, empty the Trash, calculate `15% of 240` inline, run Shortcuts, Quick Look a file, reveal it in Finder, copy a path, pin anything, and search the web.
 
