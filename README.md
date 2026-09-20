@@ -10,28 +10,25 @@ A native macOS launcher for things you remember by meaning: `the last pdf I open
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
-## Twenty things you can do
+## What only Intern does
 
 - Describe a file instead of naming it.
-- `the pdf I just downloaded` opens the newest one.
-- `the last pdf I opened`, judged by actual open dates.
-- `files I modified yesterday`, filtered before Jev sees them.
-- Toggle dark mode with one word.
-- `wifi off` beats `wifi on`, same fuzzy score.
-- Sleep, lock the screen or empty the Trash.
-- `15% of 240` gives `36` inline; Enter copies it.
-- Re-ranked on every keystroke, about 100 ms.
+- `the pdf I just downloaded` opens the newest one, judged by when it arrived.
+- `the last pdf I opened`, judged by actual open dates, not edits.
+- `files I modified yesterday`, filtered by time window before Jev sees them.
+- Re-ranked by meaning on every keystroke, about 100 ms.
 - Green ↵ appears the moment your intent is unambiguous.
-- Reopen the Chrome pages you visited today.
+- `the devin links I visited today` reopens the Chrome pages you mean.
 - `open the ambassador links I visited this week`, all at once.
-- Time windows like `last hour` or `a few days ago`.
+- Time windows like `last hour`, `this morning` or `a few days ago`.
+- Jev decides whether you mean one item or all of them.
 - Group the files you used this morning into one Open all.
 - Uncheck a member before opening the group.
-- Save a group as a workspace and recall it by name.
-- Quick Look a file without leaving the panel.
-- Reveal in Finder, copy a path or pin anything.
-- Scopes for files, apps, links and workspaces.
+- Save a group as a workspace and recall it by description.
+- Chrome history stays on your Mac; only matching rows are judged.
 - Frequent launches float up; clear the history any time.
+
+You can also do the usual launcher things: open apps and files, toggle dark mode, turn Wi-Fi on or off, sleep or lock the screen, empty the Trash, calculate `15% of 240` inline, run Shortcuts, Quick Look a file, reveal it in Finder, copy a path, pin anything, and search the web.
 
 ## Why speed matters
 
