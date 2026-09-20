@@ -63,6 +63,11 @@ final class InternModel: ObservableObject {
   private var spotlightCandidates: [Candidate] = [] {
     didSet { mergedEntries = nil }
   }
+  private var recentCandidates: [Candidate] = [] {
+    didSet { mergedEntries = nil }
+  }
+  private var recentsRefreshed = Date.distantPast
+  static let recentsInterval: TimeInterval = 30
   private var libraryCandidates: [Candidate] = [] {
     didSet { mergedEntries = nil }
   }
@@ -92,7 +97,9 @@ final class InternModel: ObservableObject {
   private let ask: @Sendable (JevRequest) async throws -> JevClient.Result
   private let execute: @MainActor (Candidate) async -> Executor.Outcome
   private let buildIndex: @Sendable (Bool) async -> LocalIndex
+  private let indexStore: IndexStore?
   private let spotlight = SpotlightSearch()
+  private let recents = SpotlightSearch()
   private var indexTask: Task<Void, Never>?
   private var requestTask: Task<Void, Never>?
   private var subscriptions = Set<AnyCancellable>()
@@ -101,6 +108,7 @@ final class InternModel: ObservableObject {
     defaults: UserDefaults = .standard,
     execute: (@MainActor (Candidate) async -> Executor.Outcome)? = nil,
     buildIndex: (@Sendable (Bool) async -> LocalIndex)? = nil,
+    indexStore: IndexStore? = nil,
     ask: (@Sendable (JevRequest) async throws -> JevClient.Result)? = nil
   ) {
     self.defaults = defaults
@@ -109,6 +117,16 @@ final class InternModel: ObservableObject {
     self.ask = ask ?? { try await client.ask($0) }
     self.execute = execute ?? { await Executor.perform($0) }
     self.buildIndex = buildIndex ?? { await LocalIndexScanner.shared.build(includeHistory: $0) }
+    self.indexStore = indexStore
+    if let indexStore {
+      Task.detached(priority: .utility) { [weak self] in
+        guard let stored = indexStore.load() else { return }
+        await MainActor.run { [weak self] in
+          guard let self, self.index.isEmpty else { return }
+          self.replaceIndex(stored)
+        }
+      }
+    }
     NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
@@ -263,6 +281,22 @@ final class InternModel: ObservableObject {
     libraryCandidates = visibleLibraryCandidates()
     refreshResults()
     rebuildIndex()
+    refreshRecents()
+  }
+
+  private func refreshRecents() {
+    guard preferences.spotlight else {
+      if !recentCandidates.isEmpty { recentCandidates = [] }
+      return
+    }
+    guard Date().timeIntervalSince(recentsRefreshed) >= Self.recentsInterval else { return }
+    recentsRefreshed = Date()
+    recents.recentlyUsed { [weak self] candidates in
+      guard let self, candidates != self.recentCandidates else { return }
+      self.recentCandidates = candidates
+      self.refreshResults()
+      if !self.isEmptyQuery { self.requestJudgment() }
+    }
   }
 
   func rebuildIndex() {
@@ -272,15 +306,22 @@ final class InternModel: ObservableObject {
     isIndexing = true
     let includeHistory = preferences.history
     let buildIndex = buildIndex
+    let indexStore = indexStore
     indexTask = Task(priority: .userInitiated) { [weak self] in
       let built = await buildIndex(includeHistory)
       guard let self, !Task.isCancelled, generation == self.indexGeneration else { return }
       self.isIndexing = false
+      let changed = built.candidates != self.index
       self.replaceIndex(built.candidates)
+      if let indexStore, changed, !built.candidates.isEmpty {
+        let candidates = built.candidates
+        Task.detached(priority: .utility) { indexStore.save(candidates) }
+      }
     }
   }
 
   func replaceIndex(_ candidates: [Candidate]) {
+    guard candidates != index else { return }
     index = candidates
     indexSize = candidates.count
     refreshResults()
@@ -522,6 +563,7 @@ final class InternModel: ObservableObject {
         {
           self.index.removeAll { $0.id == candidate.id }
           self.spotlightCandidates.removeAll { $0.id == candidate.id }
+          self.recentCandidates.removeAll { $0.id == candidate.id }
           self.libraryCandidates.removeAll { $0.id == candidate.id }
           self.memberSelection?.remove(candidate.id)
           self.selectedMemberCandidates.removeValue(forKey: candidate.id)
@@ -628,7 +670,7 @@ final class InternModel: ObservableObject {
   private func mergedCandidates() -> [Ranker.Entry] {
     if let mergedEntries { return mergedEntries }
     var candidates: [String: Candidate] = [:]
-    for item in libraryCandidates + index + spotlightCandidates {
+    for item in libraryCandidates + index + recentCandidates + spotlightCandidates {
       if case .file = item.payload, let opened = library.snapshot.records[item.id]?.lastOpened,
         opened > (item.lastOpenedAt ?? .distantPast)
       {

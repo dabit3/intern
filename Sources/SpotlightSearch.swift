@@ -8,20 +8,42 @@ final class SpotlightSearch {
   private var completion: (([Candidate]) -> Void)?
   private var generation = 0
 
+  static let recentlyUsedDays = 30
+  static let recentlyUsedLimit = 200
+  private var limit = 150
+
   func search(_ text: String, completion: @escaping ([Candidate]) -> Void) {
-    stop()
-    let generation = generation
-    let query = NSMetadataQuery()
-    query.searchScopes = [NSMetadataQueryUserHomeScope]
-    query.predicate = Self.predicate(for: text)
     let dateKey: String
     switch FileRecency(query: text) {
     case .opened: dateKey = "kMDItemLastUsedDate"
     case .added: dateKey = "kMDItemDateAdded"
     case .modified: dateKey = "kMDItemFSContentChangeDate"
     }
-    query.sortDescriptors = [NSSortDescriptor(key: dateKey, ascending: false)]
+    run(
+      predicate: Self.predicate(for: text), sortKey: dateKey, limit: 150, timeout: .seconds(1),
+      completion: completion)
+  }
+
+  /// Files the user actually opened lately, by Spotlight's last-used date, anywhere in the home
+  /// folder. Directory scans cannot see this, and it is what "the pdf I was working on" means.
+  func recentlyUsed(now: Date = Date(), completion: @escaping ([Candidate]) -> Void) {
+    run(
+      predicate: Self.recentlyUsedPredicate(now: now), sortKey: "kMDItemLastUsedDate",
+      limit: Self.recentlyUsedLimit, timeout: .seconds(3), completion: completion)
+  }
+
+  private func run(
+    predicate: NSPredicate, sortKey: String, limit: Int, timeout: Duration,
+    completion: @escaping ([Candidate]) -> Void
+  ) {
+    stop()
+    let generation = generation
+    let query = NSMetadataQuery()
+    query.searchScopes = [NSMetadataQueryUserHomeScope]
+    query.predicate = predicate
+    query.sortDescriptors = [NSSortDescriptor(key: sortKey, ascending: false)]
     self.query = query
+    self.limit = limit
     self.completion = completion
     observers = [
       NotificationCenter.default.addObserver(
@@ -34,8 +56,8 @@ final class SpotlightSearch {
       finish(generation: generation)
       return
     }
-    timeout = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(1))
+    self.timeout = Task { [weak self] in
+      try? await Task.sleep(for: timeout)
       guard !Task.isCancelled else { return }
       self?.finish(generation: generation)
     }
@@ -58,7 +80,7 @@ final class SpotlightSearch {
     var candidates: [Candidate] = []
     var seen = Set<String>()
     let now = Date()
-    for index in 0..<min(query.resultCount, 600) {
+    for index in 0..<min(query.resultCount, limit * 4) {
       guard let item = query.result(at: index) as? NSMetadataItem,
         let path = item.value(forAttribute: NSMetadataItemPathKey) as? String,
         Self.allowed(path: path)
@@ -69,7 +91,7 @@ final class SpotlightSearch {
         url: url, folder: url.deletingLastPathComponent().lastPathComponent,
         now: now, metadata: item)
       if seen.insert(candidate.id).inserted { candidates.append(candidate) }
-      if candidates.count == 150 { break }
+      if candidates.count == limit { break }
     }
     let callback = completion
     stop()
@@ -91,6 +113,17 @@ final class SpotlightSearch {
       return name.hasPrefix(".") || name.hasSuffix(".app") || name == "library"
         || name == "node_modules"
     }
+  }
+
+  static func recentlyUsedPredicate(now: Date = Date()) -> NSPredicate {
+    let since = now.addingTimeInterval(-Double(recentlyUsedDays) * 86_400)
+    return NSCompoundPredicate(andPredicateWithSubpredicates: [
+      NSCompoundPredicate(orPredicateWithSubpredicates: [
+        NSPredicate(format: "kMDItemContentTypeTree == %@", "public.data"),
+        NSPredicate(format: "kMDItemContentTypeTree == %@", "public.directory"),
+      ]),
+      NSPredicate(format: "kMDItemLastUsedDate >= %@", since as NSDate),
+    ])
   }
 
   static func predicate(for text: String, now: Date = Date()) -> NSPredicate {

@@ -27,7 +27,7 @@ struct InternApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
-  let model = InternModel()
+  let model = InternModel(indexStore: .standard)
   private var panel: InternPanelIntern?
   private var hotKey: HotKey?
   private weak var settingsWindow: NSWindow?

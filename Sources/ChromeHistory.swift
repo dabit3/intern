@@ -65,10 +65,18 @@ enum ChromeHistory {
   }
 
   static func load(fileManager: FileManager = .default, now: Date = Date()) -> [Entry] {
+    merge(
+      databaseURLs(fileManager: fileManager).map {
+        read(database: $0, fileManager: fileManager, now: now)
+      })
+  }
+
+  /// Newest visit per URL across profiles, bounded to `maxEntries`.
+  static func merge(_ groups: [[Entry]]) -> [Entry] {
     var merged: [URL: Entry] = [:]
-    for database in databaseURLs(fileManager: fileManager) {
+    for entries in groups {
       guard !Task.isCancelled else { break }
-      for entry in read(database: database, fileManager: fileManager, now: now) {
+      for entry in entries {
         guard !Task.isCancelled else { break }
         if let existing = merged[entry.url], existing.lastVisit >= entry.lastVisit { continue }
         merged[entry.url] = entry
@@ -81,6 +89,11 @@ enum ChromeHistory {
       }
     }
     return merged.values.sorted(by: newestFirst)
+  }
+
+  /// Identity of a database and its journal files; unchanged stamps mean unchanged history.
+  static func stamps(for database: URL) -> [FileStamp?] {
+    ["", "-wal", "-journal"].map { try? fileStamp(URL(fileURLWithPath: database.path + $0)) }
   }
 
   private static func newestFirst(_ lhs: Entry, _ rhs: Entry) -> Bool {
@@ -132,7 +145,7 @@ enum ChromeHistory {
     return []
   }
 
-  private struct FileStamp: Equatable {
+  struct FileStamp: Equatable, Sendable {
     let inode: ino_t
     let size: off_t
     let modifiedSeconds: Int

@@ -17,6 +17,13 @@ struct LocalIndex: Sendable {
   static let maxFilesPerDirectory = 400
   static let maxScannedEntries = 4_000
   static let maxScanDepth = 8
+  /// One folder full of logs or build products must not spend the whole scan budget, so only its
+  /// newest entries are inspected and the walk moves on to the user's other folders.
+  static let maxEntriesPerFolder = 250
+  static let skippedFolderNames: Set<String> = [
+    "library", "node_modules", "cache", "caches", "log", "logs", "tmp", "temp", "__pycache__",
+    "venv", "deriveddata", "derived data",
+  ]
 
   static func build(
     fileManager: FileManager = .default, now: Date = Date(), includeHistory: Bool = true
@@ -123,6 +130,7 @@ struct LocalIndex: Sendable {
     }
     let keys: Set<URLResourceKey> = [
       .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .isHiddenKey, .isPackageKey,
+      .contentModificationDateKey,
     ]
     var directories = [(root, 0)]
     var next = 0
@@ -133,16 +141,29 @@ struct LocalIndex: Sendable {
       next += 1
       guard
         let children = try? fileManager.contentsOfDirectory(
-          at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+          at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles])
       else { continue }
+      var entries: [(url: URL, values: URLResourceValues)] = []
+      entries.reserveCapacity(children.count)
       for url in children {
-        guard inspected < maxScannedEntries, !Task.isCancelled else { break }
-        inspected += 1
+        guard !Task.isCancelled else { break }
         let name = url.lastPathComponent.lowercased()
-        guard !name.hasPrefix("."), name != "library", name != "node_modules",
+        guard !name.hasPrefix("."), !skippedFolderNames.contains(name),
           let values = try? url.resourceValues(forKeys: keys),
           values.isHidden != true, values.isSymbolicLink != true
         else { continue }
+        entries.append((url, values))
+      }
+      if entries.count > maxEntriesPerFolder {
+        entries.sort {
+          ($0.values.contentModificationDate ?? .distantPast)
+            > ($1.values.contentModificationDate ?? .distantPast)
+        }
+        entries.removeLast(entries.count - maxEntriesPerFolder)
+      }
+      for (url, values) in entries {
+        guard inspected < maxScannedEntries, !Task.isCancelled else { break }
+        inspected += 1
         let isApp = url.pathExtension.lowercased() == "app"
         if isApp {
           if appsOnly, values.isDirectory == true { urls.append(url) }
@@ -177,7 +198,8 @@ struct LocalIndex: Sendable {
       var candidates: [Candidate] = []
       for url in urls {
         guard !Task.isCancelled else { break }
-        candidates.append(fileCandidate(url: url, folder: folder, now: now))
+        candidates.append(
+          fileCandidate(url: url, folder: folder, now: now, readSpotlightMetadata: false))
       }
       for candidate in recentFiles(candidates) {
         guard !Task.isCancelled else { break }
@@ -348,10 +370,74 @@ struct LocalIndex: Sendable {
   }
 }
 
+/// Serializes index builds and remembers their expensive parts. Folder and application scans are
+/// reused for `scanInterval`; browser history is re-read only when Chrome's database files change.
 actor LocalIndexScanner {
   static let shared = LocalIndexScanner()
+  static let scanInterval: TimeInterval = 90
+
+  private struct HistoryRead {
+    let stamps: [ChromeHistory.FileStamp?]
+    let entries: [ChromeHistory.Entry]
+  }
+
+  private var localScan: (built: Date, candidates: [Candidate])?
+  private var history: [URL: HistoryRead] = [:]
+  private let fileManager: FileManager
+  private let clock: @Sendable () -> Date
+
+  init(fileManager: FileManager = .default, clock: @escaping @Sendable () -> Date = { Date() }) {
+    self.fileManager = fileManager
+    self.clock = clock
+  }
 
   func build(includeHistory: Bool) -> LocalIndex {
-    LocalIndex.build(includeHistory: includeHistory)
+    let now = clock()
+    var candidates = localCandidates(now: now)
+    guard !Task.isCancelled else { return LocalIndex(candidates: candidates) }
+    if includeHistory {
+      let entries = historyEntries(now: now)
+      candidates.append(contentsOf: ChromeHistory.candidates(from: entries, now: now))
+    }
+    return LocalIndex(candidates: candidates)
+  }
+
+  func invalidate() {
+    localScan = nil
+    history = [:]
+  }
+
+  private func localCandidates(now: Date) -> [Candidate] {
+    if let localScan, now.timeIntervalSince(localScan.built) < Self.scanInterval {
+      return localScan.candidates
+    }
+    var candidates = LocalIndex.scanApps(fileManager: fileManager)
+    guard !Task.isCancelled else { return candidates }
+    candidates.append(contentsOf: LocalIndex.scanFiles(fileManager: fileManager, now: now))
+    guard !Task.isCancelled else { return candidates }
+    candidates.append(contentsOf: SystemToggle.allCases.map(\.candidate))
+    candidates.append(contentsOf: LocalIndex.scanShortcuts())
+    guard !Task.isCancelled else { return candidates }
+    localScan = (now, candidates)
+    return candidates
+  }
+
+  private func historyEntries(now: Date) -> [ChromeHistory.Entry] {
+    let databases = ChromeHistory.databaseURLs(fileManager: fileManager)
+    history = history.filter { databases.contains($0.key) }
+    var groups: [[ChromeHistory.Entry]] = []
+    for database in databases {
+      guard !Task.isCancelled else { break }
+      let stamps = ChromeHistory.stamps(for: database)
+      if let cached = history[database], cached.stamps == stamps {
+        groups.append(cached.entries)
+        continue
+      }
+      let entries = ChromeHistory.read(database: database, fileManager: fileManager, now: now)
+      guard !Task.isCancelled else { break }
+      history[database] = HistoryRead(stamps: stamps, entries: entries)
+      groups.append(entries)
+    }
+    return ChromeHistory.merge(groups)
   }
 }
