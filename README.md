@@ -15,20 +15,18 @@ The first five examples show live Jev ranking against single targets. The final 
 ## What only Intern does
 
 - Describe a file instead of naming it.
-- `the pdf I just downloaded` opens the newest one, judged by when it arrived.
-- `the last pdf I opened`, judged by actual open dates, not edits.
-- `files I modified yesterday`, filtered by time window before Jev sees them.
+- `the pdf I just downloaded` opens the newest arrival.
+- `the last pdf I opened`, by when you opened it, not when it changed.
+- `files I modified yesterday`, `the deck from last week`.
 - `the devin links I visited today` reopens the Chrome pages you mean.
-- `open the ambassador links I visited this week`, all at once.
-- Time windows like `last hour`, `this morning` or `a few days ago`.
-- Jev decides whether you mean one item or all of them.
-- Group the files you used this morning into one Open all.
+- `open the ambassador links I visited this week`, all in one go.
+- Time windows in plain words: `last hour`, `this morning`, `a few days ago`.
+- Group the files you used this morning into a single Open all.
 - Uncheck a member before opening the group.
-- Save a group as a workspace and recall it by description.
-- Chrome history stays on your Mac; only matching rows are judged.
-- Frequent launches float up; clear the history any time.
-- Everything above is re-ranked by meaning on every keystroke, about 100 ms.
-- A green ↵ appears the moment your intent is unambiguous.
+- Save a group as a workspace and recall it by name.
+- Clear launch history when you want a clean slate.
+
+Under the hood: local search finds candidates, Jev re-ranks them by meaning on every keystroke in about 100 ms, and decides whether you mean one item or all of them. A green ↵ appears the moment your intent is unambiguous. Chrome history is read locally and only the matching rows are ever sent.
 
 You can also do the usual launcher things: open apps and files, toggle dark mode, turn Wi-Fi on or off, sleep or lock the screen, empty the Trash, calculate `15% of 240` inline, run Shortcuts, Quick Look a file, reveal it in Finder, copy a path, pin anything, and search the web.
 
