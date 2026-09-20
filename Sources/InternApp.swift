@@ -96,10 +96,43 @@ private struct SettingsWindowReader: NSViewRepresentable {
   }
 }
 
+@MainActor
+final class APIKeySettings: ObservableObject {
+  @Published var draft = ""
+  @Published private var savedKey = ""
+  private let defaults: UserDefaults
+
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    reload()
+  }
+
+  var hasUnsavedChanges: Bool { draft != savedKey }
+  var hasSavedKey: Bool {
+    !savedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  func reload() {
+    savedKey = defaults.string(forKey: JevClient.apiKeyDefaultsKey) ?? ""
+    draft = savedKey
+  }
+
+  func save() {
+    guard hasUnsavedChanges else { return }
+    let key = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    if key.isEmpty {
+      defaults.removeObject(forKey: JevClient.apiKeyDefaultsKey)
+    } else {
+      defaults.set(key, forKey: JevClient.apiKeyDefaultsKey)
+    }
+    reload()
+  }
+}
+
 struct SettingsView: View {
   @ObservedObject var model: InternModel
   var hotKeyError: String? = nil
-  @AppStorage(JevClient.apiKeyDefaultsKey) private var apiKey = ""
+  @StateObject private var apiKey = APIKeySettings()
   @AppStorage("includeSpotlight") private var includeSpotlight = true
   @AppStorage("includeChromeHistory") private var includeHistory = true
   @AppStorage("localOnly") private var localOnly = false
@@ -115,11 +148,33 @@ struct SettingsView: View {
         }
       }
       Section("TypeSafe") {
-        SecureField("API key", text: $apiKey)
+        HStack {
+          SecureField("API key", text: $apiKey.draft)
+            .accessibilityIdentifier("typesafe-api-key")
+            .onSubmit { saveAPIKey() }
+          Button("Save", action: saveAPIKey)
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(!apiKey.hasUnsavedChanges)
+            .accessibilityIdentifier("save-typesafe-api-key")
+        }
+        Group {
+          if apiKey.hasUnsavedChanges {
+            Text("Unsaved changes")
+              .foregroundStyle(.orange)
+          } else if apiKey.hasSavedKey {
+            Label("API key saved", systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.secondary)
+          } else {
+            Text("No API key saved")
+              .foregroundStyle(.secondary)
+          }
+        }
+        .font(.caption)
         Text(
-          ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"] == nil
-            ? "TYPESAFE_API_KEY is not set in the environment; the key above is used instead."
-            : "TYPESAFE_API_KEY is set in the environment and takes precedence."
+          ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? "TYPESAFE_API_KEY is set in the environment and takes precedence over the saved key."
+            : "Changes take effect when you save. Clear the field and save to remove the key."
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -159,8 +214,15 @@ struct SettingsView: View {
     .formStyle(.grouped)
     .frame(width: 480)
     .padding()
+    .onAppear { apiKey.reload() }
     .onChange(of: includeSpotlight) { _, _ in model.preferencesChanged() }
     .onChange(of: includeHistory) { _, _ in model.preferencesChanged() }
     .onChange(of: localOnly) { _, _ in model.preferencesChanged() }
+  }
+
+  private func saveAPIKey() {
+    guard apiKey.hasUnsavedChanges else { return }
+    apiKey.save()
+    model.preferencesChanged()
   }
 }

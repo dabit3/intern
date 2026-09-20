@@ -65,6 +65,72 @@ final class StateQualityTests: XCTestCase {
     XCTFail("Timed out waiting for test state")
   }
 
+  func testAPIKeyDraftIsOnlyPersistedAfterExplicitSave() throws {
+    let (defaults, suite) = try defaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let settings = APIKeySettings(defaults: defaults)
+    XCTAssertFalse(settings.hasSavedKey)
+    XCTAssertFalse(settings.hasUnsavedChanges)
+
+    settings.draft = "  test-api-key \n"
+    XCTAssertTrue(settings.hasUnsavedChanges)
+    XCTAssertFalse(settings.hasSavedKey)
+    XCTAssertNil(defaults.string(forKey: JevClient.apiKeyDefaultsKey))
+
+    settings.save()
+
+    XCTAssertEqual(defaults.string(forKey: JevClient.apiKeyDefaultsKey), "test-api-key")
+    XCTAssertEqual(settings.draft, "test-api-key")
+    XCTAssertTrue(settings.hasSavedKey)
+    XCTAssertFalse(settings.hasUnsavedChanges)
+    let reopened = APIKeySettings(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+    XCTAssertEqual(reopened.draft, "test-api-key")
+    XCTAssertTrue(reopened.hasSavedKey)
+    XCTAssertFalse(reopened.hasUnsavedChanges)
+  }
+
+  func testAPIKeyEditsDoNotOverwriteSavedKeyAndCanBeDiscarded() throws {
+    let (defaults, suite) = try defaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("original-test-key", forKey: JevClient.apiKeyDefaultsKey)
+    let settings = APIKeySettings(defaults: defaults)
+    settings.draft = "unfinished-replacement"
+
+    XCTAssertTrue(settings.hasUnsavedChanges)
+    XCTAssertEqual(defaults.string(forKey: JevClient.apiKeyDefaultsKey), "original-test-key")
+    XCTAssertEqual(APIKeySettings(defaults: defaults).draft, "original-test-key")
+    settings.reload()
+    XCTAssertEqual(settings.draft, "original-test-key")
+    XCTAssertFalse(settings.hasUnsavedChanges)
+
+    settings.draft = "replacement-test-key"
+    settings.save()
+    XCTAssertEqual(defaults.string(forKey: JevClient.apiKeyDefaultsKey), "replacement-test-key")
+    XCTAssertFalse(settings.hasUnsavedChanges)
+  }
+
+  func testClearingAPIKeyRemovesItOnlyAfterSaving() throws {
+    let (defaults, suite) = try defaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set("original-test-key", forKey: JevClient.apiKeyDefaultsKey)
+    let settings = APIKeySettings(defaults: defaults)
+    settings.draft = ""
+    XCTAssertEqual(defaults.string(forKey: JevClient.apiKeyDefaultsKey), "original-test-key")
+    XCTAssertTrue(settings.hasUnsavedChanges)
+
+    settings.save()
+
+    XCTAssertNil(defaults.object(forKey: JevClient.apiKeyDefaultsKey))
+    XCTAssertFalse(settings.hasSavedKey)
+    XCTAssertFalse(settings.hasUnsavedChanges)
+    XCTAssertFalse(APIKeySettings(defaults: defaults).hasSavedKey)
+    settings.draft = " \n\t "
+    settings.save()
+    XCTAssertNil(defaults.object(forKey: JevClient.apiKeyDefaultsKey))
+    XCTAssertEqual(settings.draft, "")
+    XCTAssertFalse(settings.hasUnsavedChanges)
+  }
+
   func testFreshIndexMetadataWinsOverPersistedCandidateMetadata() throws {
     let (defaults, suite) = try defaults()
     defer { defaults.removePersistentDomain(forName: suite) }

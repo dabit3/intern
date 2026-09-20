@@ -29,11 +29,13 @@ Intern runs in the menu bar, not the Dock.
 
 1. Sign in to the [TypeSafe dashboard](https://console.typesafe.ai/keys) and get an API key. See the [TypeSafe quick start](https://docs.typesafe.ai/introduction/quickstart) for more details.
 2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**.
-3. In the **TypeSafe** section, paste your key into **API key**. It saves automatically; no terminal command is needed for the downloaded app.
+3. In the **TypeSafe** section, paste your key into **API key** and click **Save** (or press **Command-S**). **Unsaved changes** becomes **API key saved** once it is stored. No terminal command is needed for the downloaded app.
 4. Under **Search and privacy**, leave **Keep searches on this Mac** turned off to enable online ranking. You can also choose whether to search files with Spotlight and include Chrome browsing history.
 5. Close Settings, press **Option-Space**, and try `the pdf I just downloaded`. Press **Return** to open the selected result. Allow access to folders you want to search when macOS asks.
 
 If online ranking is unavailable, Intern keeps showing local results. Check that your API key is valid, your Mac is online, and **Keep searches on this Mac** is off. Turn that setting on whenever you want local-only search; it disables TypeSafe requests even with a key configured.
+
+To replace your key, edit the field and click **Save** again. To remove it, clear the field and save; the status becomes **No API key saved**. The saved status confirms storage, not API validation. When running from a terminal, a nonempty `TYPESAFE_API_KEY` environment variable takes precedence over the saved key.
 
 ## What Intern does
 
