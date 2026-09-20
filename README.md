@@ -8,7 +8,7 @@ Intern is a native macOS app that finds things the way you remember them. Press 
 
 Intern searches your files and Chrome history locally, then [Jev](https://docs.typesafe.ai) judges which candidate you mean on every keystroke, about 100 ms per round trip. When one thing clearly fits, it is selected and a green ↵ appears. When several do, Intern offers to open them all, and that group can be saved as a workspace and recalled later by name.
 
-![Six Intern examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
+![Four Intern examples: finding the PDF you just downloaded, opening the files you used in the last hour, reopening the Devin Ambassador pages you visited today, and saving three apps as a Writing workspace you recall by name](docs/demo.gif)
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
