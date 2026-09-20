@@ -80,6 +80,7 @@ enum Fuzzy {
   /// A candidate's searchable text, tokenized once so scoring a keystroke allocates nothing.
   struct Document: Sendable {
     let titleTokens: [String]
+    let firstTitleToken: String
     let joinedTitle: String
     let joinedTitleBytes: [UInt8]
     let terms: [Term]
@@ -89,6 +90,7 @@ enum Fuzzy {
 
     init(_ candidate: Candidate) {
       titleTokens = tokens(candidate.title)
+      firstTitleToken = titleTokens.first ?? ""
       joinedTitle = titleTokens.joined()
       joinedTitleBytes = Array(joinedTitle.utf8)
       terms = (titleTokens + candidate.keywords.flatMap(tokens) + candidate.appRoleTerms).map(
@@ -148,7 +150,9 @@ enum Fuzzy {
         best = max(best, 0.88)
       }
       if term.text.hasPrefix(token.text) {
-        best = max(best, 0.72 + 0.15 * Double(length) / Double(term.count))
+        // Starting the name ("sa" → Safari) is a stronger signal than starting a later word.
+        let lead = term.text == document.firstTitleToken ? 0.03 : 0
+        best = max(best, 0.72 + 0.15 * Double(length) / Double(term.count) + lead)
       }
     }
     if best > 0 { return best }

@@ -53,6 +53,11 @@ enum Ranker {
     "html", "css", "js", "ts", "py", "rb", "sh", "yml", "yaml", "xml", "plist",
   ])
 
+  /// Personal-library boosts are clamped to this; a boost at or above `aliasBoost` marks an item
+  /// the user chose for this exact query before.
+  static let maximumBoost = 0.35
+  static let aliasBoost = 0.3
+
   /// Jev must lean at least this far toward "all" before the group row leads the list.
   static let setThreshold = 0.5
   /// A candidate is part of the set when Jev is at least this sure it fits the description.
@@ -171,7 +176,7 @@ enum Ranker {
         }
       }
       let suppliedBoost = boosts[candidate.id] ?? 0
-      let boost = suppliedBoost.isFinite ? min(0.35, max(0, suppliedBoost)) : 0
+      let boost = suppliedBoost.isFinite ? min(maximumBoost, max(0, suppliedBoost)) : 0
       let score: Double
       if structured, descriptiveWords.isEmpty, lexical < 1 {
         if windowOnly || hasRecency {
@@ -179,8 +184,11 @@ enum Ranker {
         }
         score = 0.8
       } else {
-        let relevance = max(lexical, boost >= 0.3 ? 0.7 : 0)
-        score = lexical == 1 ? 1 : min(0.95, relevance + min(0.04, boost))
+        // A learned alias (the user picked this item for exactly this query before) counts as
+        // a strong match even when the words differ; other habits only strengthen real matches.
+        guard lexical > 0 || boost >= aliasBoost else { continue }
+        let relevance = max(lexical, boost >= aliasBoost ? 0.7 : 0)
+        score = lexical == 1 ? 1 : min(0.99, relevance + boost)
       }
       if score >= floor { scored.append((candidate, score, age ?? .infinity)) }
     }

@@ -185,13 +185,26 @@ final class PersonalLibrary: ObservableObject {
     }
   }
 
+  /// How much the user's own history should lift each item for this query. An exact repeat of a
+  /// query that opened the item before is an alias (`Ranker.aliasBoost` or more). Typing the
+  /// start of a short learned query lifts it almost as much, so habits win as soon as they are
+  /// recognizable. Everything else is frecency: pinned, recently opened and often opened.
   func boosts(query: String, now: Date = Date()) -> [String: Double] {
     let normalized = Self.normalize(query)
     return snapshot.records.mapValues { record in
-      if !normalized.isEmpty, record.queries.contains(normalized) { return 0.35 }
+      if !normalized.isEmpty, record.queries.contains(normalized) { return Ranker.maximumBoost }
       let age = now.timeIntervalSince(record.lastOpened ?? .distantPast) / 86_400
-      return (record.pinned ? 0.04 : 0) + 0.06 * exp(-max(0, age) / 7)
+      var boost =
+        (record.pinned ? 0.04 : 0) + 0.06 * exp(-max(0, age) / 7)
         + min(0.04, Double(record.count) * 0.005)
+      if normalized.count >= 2,
+        record.queries.contains(where: {
+          !$0.contains(" ") && $0.hasPrefix(normalized) && $0.count <= normalized.count + 6
+        })
+      {
+        boost = max(boost, 0.25)
+      }
+      return boost
     }
   }
 

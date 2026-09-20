@@ -258,6 +258,14 @@ struct LocalIndex: Sendable {
     let parent = url.deletingLastPathComponent().path
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let location = parent.hasPrefix(home + "/") ? "~" + parent.dropFirst(home.count) : parent
+    // The two enclosing folder names are searchable too: "roadmap quarter" finds
+    // Downloads/Projects/Quarter/roadmap.pdf.
+    for component in location.split(separator: "/").dropFirst().suffix(2) {
+      for word in Fuzzy.tokens(String(component)) where word.count >= 2 && !keywords.contains(word)
+      {
+        keywords.append(word)
+      }
+    }
     var subtitle = "\(isDirectory ? "Folder" : fileTypeLabel(ext)) in \(location)"
     if let lastOpened {
       subtitle +=
