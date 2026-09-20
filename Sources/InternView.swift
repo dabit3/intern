@@ -392,6 +392,23 @@ struct Confidence: View {
   }
 }
 
+/// Finder icons are fetched through Launch Services; once per path is enough for a session.
+@MainActor
+enum IconCache {
+  private static let cache: NSCache<NSString, NSImage> = {
+    let cache = NSCache<NSString, NSImage>()
+    cache.countLimit = 512
+    return cache
+  }()
+
+  static func icon(forFile path: String) -> NSImage {
+    if let cached = cache.object(forKey: path as NSString) { return cached }
+    let icon = NSWorkspace.shared.icon(forFile: path)
+    cache.setObject(icon, forKey: path as NSString)
+    return icon
+  }
+}
+
 /// The real app or document icon where one exists; a tinted glyph for everything synthetic.
 struct CandidateIcon: View {
   let candidate: Candidate
@@ -399,7 +416,7 @@ struct CandidateIcon: View {
   var body: some View {
     switch candidate.payload {
     case .app(let url), .file(let url):
-      Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+      Image(nsImage: IconCache.icon(forFile: url.path))
         .resizable()
         .interpolation(.high)
         .frame(width: 32, height: 32)

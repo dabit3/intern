@@ -271,8 +271,12 @@ enum Ranker {
   static let setMemberWeight = 0.25
   /// A judgment for an earlier draft of the query keeps this share of its influence.
   static let staleWeight = 0.5
-  /// Typing an item's exact name is definitive; no online reading demotes it below this.
-  static let exactNameFloor = 0.9
+
+  /// Typing an item's exact name is definitive: such rows form a tier above every other row,
+  /// ordered among themselves by the usual score.
+  static func isExactName(_ hit: RankedHit) -> Bool {
+    hit.fuzzy == 1 && (hit.candidate.isOpenable || hit.candidate.kind == .systemToggle)
+  }
 
   /// Merges fuzzy scores with Jev's judgment. With no judgment the order is pure fuzzy.
   /// When Jev finds several rows that fit the description, a group row is added: on top when
@@ -305,14 +309,13 @@ enum Ranker {
         onlineWeight * (targetWeight * target + actionWeight * action)
         + (1 - onlineWeight * (1 - fuzzyWeight)) * fuzzy
       if inSet { score += setMemberWeight * judgment.setProbability * (match ?? 0) }
-      if fuzzy == 1, candidate.isOpenable || candidate.kind == .systemToggle {
-        score = max(score, exactNameFloor)
-      }
       return RankedHit(
         candidate: candidate, fuzzy: fuzzy, jevProbability: target, matchProbability: match,
         inSet: inSet, score: score)
     }
     hits.sort { lhs, rhs in
+      let (lhsExact, rhsExact) = (isExactName(lhs), isExactName(rhs))
+      if lhsExact != rhsExact { return lhsExact }
       if lhs.score != rhs.score { return lhs.score > rhs.score }
       return (positions[lhs.id] ?? 0) < (positions[rhs.id] ?? 0)
     }

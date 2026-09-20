@@ -100,6 +100,63 @@ final class IndexingQualityTests: XCTestCase {
     XCTAssertFalse(candidates.contains { $0.title == "Example.app" })
   }
 
+  func testOneCrowdedFolderCannotStarveTheRestOfTheScan() throws {
+    for index in 0..<(LocalIndex.maxEntriesPerFolder + 100) {
+      try file("Downloads/exports/export-\(index).csv")
+    }
+    for index in 0..<50 {
+      try file("Downloads/logs/run-\(index).log")
+    }
+    let wanted = try file("Downloads/Projects/roadmap.pdf")
+    let candidates = LocalIndex.scanFiles(fileManager: manager, now: now)
+    XCTAssertTrue(candidates.contains { $0.fileURL == wanted })
+    XCTAssertLessThanOrEqual(
+      candidates.filter { $0.title.hasPrefix("export-") }.count, LocalIndex.maxEntriesPerFolder)
+    XCTAssertFalse(candidates.contains { $0.title.hasSuffix(".log") })
+  }
+
+  func testEnclosingFolderNamesAreSearchable() throws {
+    let url = try file("Downloads/Projects/Quarter-Review/roadmap.pdf")
+    let candidate = LocalIndex.fileCandidate(url: url, folder: "Downloads", now: now)
+    XCTAssertTrue(candidate.keywords.contains("projects"))
+    XCTAssertTrue(candidate.keywords.contains("quarter"))
+    XCTAssertTrue(candidate.keywords.contains("review"))
+    XCTAssertEqual(
+      Ranker.rank(Ranker.prefilter(query: "quarter roadmap", index: [candidate]), judgment: nil)
+        .first?.id, candidate.id)
+  }
+
+  func testScannerReusesFolderScansAndRefreshesAfterTheInterval() async throws {
+    try file("Downloads/first.pdf")
+    var clock = now
+    let scanner = LocalIndexScanner(fileManager: manager, clock: { clock })
+    let first = await scanner.build(includeHistory: false)
+    XCTAssertTrue(first.candidates.contains { $0.title == "first.pdf" })
+
+    try file("Downloads/second.pdf")
+    clock = now.addingTimeInterval(LocalIndexScanner.scanInterval / 2)
+    let cached = await scanner.build(includeHistory: false)
+    XCTAssertFalse(cached.candidates.contains { $0.title == "second.pdf" })
+
+    clock = now.addingTimeInterval(LocalIndexScanner.scanInterval + 1)
+    let refreshed = await scanner.build(includeHistory: false)
+    XCTAssertTrue(refreshed.candidates.contains { $0.title == "second.pdf" })
+  }
+
+  func testHistoryStampsChangeOnlyWhenTheDatabaseFilesChange() throws {
+    let url = home.appendingPathComponent(ChromeHistory.profileRoot)
+      .appendingPathComponent("Default/History")
+    try manager.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("one".utf8).write(to: url)
+    let before = ChromeHistory.stamps(for: url)
+    XCTAssertEqual(before, ChromeHistory.stamps(for: url))
+    XCTAssertNotNil(before[0])
+    XCTAssertNil(before[1])
+    try Data("one two".utf8).write(to: url)
+    XCTAssertNotEqual(before, ChromeHistory.stamps(for: url))
+  }
+
   func testHomeFoldersRemainDirectlySearchable() throws {
     for name in LocalIndex.fileDirectories {
       try manager.createDirectory(
