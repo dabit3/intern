@@ -573,12 +573,42 @@ final class PersistenceQualityTests: XCTestCase {
     let candidates = restored.candidates()
     let restoredLink = try XCTUnwrap(candidates.first { $0.id == link.id })
     XCTAssertNil(restoredLink.ageDays)
+    XCTAssertNil(restoredLink.visitedAt)
     XCTAssertFalse(restoredLink.subtitle.contains("today"))
     let workspace = try XCTUnwrap(candidates.first { $0.id.hasPrefix("workspace:") })
     guard case .group(let members) = workspace.payload else {
       return XCTFail("Missing workspace members")
     }
     XCTAssertNil(members.first { $0.id == link.id }?.ageDays)
+    XCTAssertNil(members.first { $0.id == link.id }?.visitedAt)
+  }
+
+  func testPersistedURLVisitTimestampsSurviveAndAgeWithTime() throws {
+    let suite = "PersistenceQualityTests.\(UUID())"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let visited = Date(timeIntervalSince1970: 1_700_000_000)
+    let link = Candidate(
+      id: "url:example", title: "Example", subtitle: "Visited today", kind: .openURL,
+      payload: .url(URL(string: "https://example.com")!), ageDays: 0, visitedAt: visited)
+    let library = PersonalLibrary(defaults: defaults)
+    library.record(link, query: "example")
+    XCTAssertTrue(library.saveWorkspace(name: "Work", members: [link, Fixtures.safari]))
+    let restored = PersonalLibrary(defaults: defaults)
+    let candidates = restored.candidates()
+    let restoredLink = try XCTUnwrap(candidates.first { $0.id == link.id })
+    let workspace = try XCTUnwrap(candidates.first { $0.id.hasPrefix("workspace:") })
+    guard case .group(let members) = workspace.payload else {
+      return XCTFail("Missing workspace members")
+    }
+    let restoredMember = try XCTUnwrap(members.first { $0.id == link.id })
+
+    for candidate in [restoredLink, restoredMember] {
+      XCTAssertEqual(candidate.visitedAt, visited)
+      XCTAssertNil(candidate.ageDays)
+      XCTAssertEqual(candidate.age(for: .modified, now: visited.addingTimeInterval(172_800)), 2)
+      XCTAssertFalse(candidate.subtitle.contains("today"))
+    }
   }
 
   func testLongQueriesCannotCreateFalseLearnedMatchesFromTruncatedAliases() throws {
