@@ -325,9 +325,14 @@ enum JevQuestions {
   {
     guard let answer, answer.type == "choice", let values = answer.probabilities,
       !values.isEmpty, Set(values.keys).isSubset(of: options),
-      values.values.allSatisfy({ probability($0) != nil }),
-      values.values.reduce(0, +) <= 1.001
+      values.values.allSatisfy({ probability($0) != nil })
     else { return nil }
+    let total = values.values.reduce(0, +)
+    let tolerance = min(0.05, Double(values.count) * 0.005 + 0.000001)
+    guard total <= 1 + tolerance else { return nil }
+    if abs(total - 1) <= tolerance {
+      return values.mapValues { $0 / total }
+    }
     return values
   }
 

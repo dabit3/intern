@@ -3,6 +3,51 @@ import XCTest
 @testable import Intern
 
 final class IntegrationQualityTests: XCTestCase {
+  func testUncertainWebJudgmentPreservesStrongLocalMatch() throws {
+    let local = Ranker.prefilter(query: "safrai", index: [Fixtures.safari])
+    let judgment = JevJudgment(
+      targetProbabilities: [Fixtures.safari.id: 0.4, Ranker.webSearchID: 0.44],
+      noneProbability: 0.16, targetConfidence: 0.16, action: .webSearch,
+      actionProbabilities: [.openApp: 0.14, .webSearch: 0.82, .unclear: 0.04],
+      actionConfidence: 0.79, ready: 0.3)
+    XCTAssertEqual(Ranker.rank(local, judgment: judgment).first?.id, Fixtures.safari.id)
+    let certainSearch = JevJudgment(
+      targetProbabilities: [Fixtures.safari.id: 0.02, Ranker.webSearchID: 0.98],
+      noneProbability: 0, targetConfidence: 0.98, action: .webSearch,
+      actionProbabilities: [.webSearch: 1], actionConfidence: 1, ready: 1)
+    XCTAssertEqual(Ranker.rank(local, judgment: certainSearch).first?.id, Ranker.webSearchID)
+  }
+
+  func testRoundedOnlineProbabilitiesAreNormalizedWithoutAcceptingIncompleteAnswers() throws {
+    for probabilities in [
+      ["c0": 0.93, "c1": 0.04, "c2": 0.02, "none": 0],
+      ["c0": 0.93, "c1": 0.04, "c2": 0.04, "none": 0],
+    ] {
+      let response = JevResponse(
+        model: "test",
+        answers: [
+          "target": .init(
+            type: "choice", choice: "c0", confidence: 0.91,
+            probabilities: probabilities, noul: nil)
+        ], usage: .init(inputTokens: 0, outputTokens: 0))
+      let judgment = try XCTUnwrap(
+        JevQuestions.parse(
+          response, candidates: [Fixtures.roadmap, Fixtures.safari, Fixtures.sleep]))
+      XCTAssertEqual(judgment.targetProbabilities.values.reduce(0, +), 1, accuracy: 0.000001)
+      XCTAssertEqual(
+        judgment.targetProbabilities[Fixtures.roadmap.id] ?? 0,
+        0.93 / probabilities.values.reduce(0, +), accuracy: 0.000001)
+    }
+    let incomplete = JevResponse(
+      model: "test",
+      answers: [
+        "target": .init(
+          type: "choice", choice: "c0", confidence: 0.91,
+          probabilities: ["c0": 0.93], noul: nil)
+      ], usage: .init(inputTokens: 0, outputTokens: 0))
+    XCTAssertNil(JevQuestions.parse(incomplete, candidates: [Fixtures.roadmap]))
+  }
+
   func testOnlineRecencyOrderSeparatesEvidenceBasesAndPreservesTies() {
     let now = Date(timeIntervalSince1970: 1_790_000_000)
     let files = [446.0, 421, 421, 0].enumerated().map { index, age in

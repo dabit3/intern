@@ -242,6 +242,9 @@ enum Ranker {
     let candidates = uniqueCandidates(prefiltered.candidates)
     let positions = Dictionary(
       uniqueKeysWithValues: candidates.enumerated().map { ($0.element.id, $0.offset) })
+    let probabilities = judgment?.targetProbabilities.values.sorted(by: >) ?? []
+    let lead = (probabilities.first ?? 0) - (probabilities.dropFirst().first ?? 0)
+    let onlineWeight = min(1, 2 * max(judgment?.targetConfidence ?? 0, lead))
     var hits = candidates.map { candidate -> RankedHit in
       let fuzzy = prefiltered.fuzzy[candidate.id] ?? 0
       guard let judgment else {
@@ -253,7 +256,9 @@ enum Ranker {
       let action = judgment.actionProbabilities[candidate.kind] ?? 0
       let match = judgment.matchProbabilities[candidate.id]
       let inSet = members.contains(candidate.id)
-      var score = targetWeight * target + actionWeight * action + fuzzyWeight * fuzzy
+      var score =
+        onlineWeight * (targetWeight * target + actionWeight * action)
+        + (1 - onlineWeight * (1 - fuzzyWeight)) * fuzzy
       if inSet { score += setMemberWeight * judgment.setProbability * (match ?? 0) }
       return RankedHit(
         candidate: candidate, fuzzy: fuzzy, jevProbability: target, matchProbability: match,
