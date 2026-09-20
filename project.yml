@@ -27,8 +27,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.devin.typesafe.jev-launcher
-        MARKETING_VERSION: 0.1.4
-        CURRENT_PROJECT_VERSION: 5
+        MARKETING_VERSION: 0.2.0
+        CURRENT_PROJECT_VERSION: 6
         CODE_SIGN_ENTITLEMENTS: Resources/Intern.entitlements
         INFOPLIST_KEY_CFBundleDisplayName: Intern
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
