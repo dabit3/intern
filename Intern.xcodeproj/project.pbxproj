@@ -24,6 +24,7 @@
 		66A72D92A64F2812AD06DE88 /* JevQuestions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E79866406C01F46B0FEC78B /* JevQuestions.swift */; };
 		6DFC8926BF9A74D8F66A2B89 /* ChromeHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BC796FD962D839DCC71191 /* ChromeHistory.swift */; };
 		721F99794C5B5D0ADC4975C4 /* Candidate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9578264D1CD9CC8661A120EA /* Candidate.swift */; };
+		7F6AA8E9653948C004E5F858 /* Intern.icns in Resources */ = {isa = PBXBuildFile; fileRef = 461DA7EA3283FC82140EF753 /* Intern.icns */; };
 		8CA6EA1992F4BF8CA7F73F7D /* Calculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C612B6D039C3DF61B62E6FCE /* Calculator.swift */; };
 		99DDB17DF7EDAC5D97CE538C /* SearchScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = B75AC266AEEB05541FFFF9E9 /* SearchScope.swift */; };
 		9A412B59479E446C3E2BEDF5 /* CalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01F0B823F41898838442B320 /* CalculatorTests.swift */; };
@@ -55,6 +56,7 @@
 		1AD4BB34BBB191D22B2E624B /* LatencyStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyStats.swift; sourceTree = "<group>"; };
 		34A6090710CD908C6A8C5FAC /* ActionList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionList.swift; sourceTree = "<group>"; };
 		4108016690E940BCB9E130AD /* PersonalLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonalLibrary.swift; sourceTree = "<group>"; };
+		461DA7EA3283FC82140EF753 /* Intern.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = Intern.icns; sourceTree = "<group>"; };
 		46C33E05AEF5FA5B1E517DA8 /* TimeWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeWindow.swift; sourceTree = "<group>"; };
 		4E79866406C01F46B0FEC78B /* JevQuestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JevQuestions.swift; sourceTree = "<group>"; };
 		50C8ACC2D0547E97398EF773 /* Executor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Executor.swift; sourceTree = "<group>"; };
@@ -135,10 +137,19 @@
 		AAA0767CA4E67538AC864DAD = {
 			isa = PBXGroup;
 			children = (
+				D0F3A82DC47BBBC20F83406A /* Resources */,
 				489705E373D8DB7A4051B22E /* Sources */,
 				613944F360FCFEE9E684D7BF /* Tests */,
 				63F85A35184E8D0B9AC6D115 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		D0F3A82DC47BBBC20F83406A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				461DA7EA3283FC82140EF753 /* Intern.icns */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -149,6 +160,7 @@
 			buildConfigurationList = 25325545AA7550DEFD6A09BD /* Build configuration list for PBXNativeTarget "Intern" */;
 			buildPhases = (
 				734D0814301E6AF6B2E6896D /* Sources */,
+				0B45C9FBA954EC85D1B83318 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -217,6 +229,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0B45C9FBA954EC85D1B83318 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7F6AA8E9653948C004E5F858 /* Intern.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		414A9AE32A7D763356CE342F /* Sources */ = {
@@ -359,10 +382,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Intern.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
-				INFOPLIST_KEY_CFBundleDisplayName = Intern;
+				INFOPLIST_FILE = Resources/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Intern Dev";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Intern sends Apple Events to System Events and Finder to run system toggles such as Dark Mode, Sleep and Empty Trash.";
@@ -371,7 +397,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.devin.typesafe.jev-launcher";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.devin.typesafe.jev-launcher.debug";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -456,9 +483,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Resources/Intern.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Intern;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -468,6 +498,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.devin.typesafe.jev-launcher";
 				SDKROOT = macosx;
 			};

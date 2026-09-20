@@ -15,12 +15,14 @@ struct LocalIndex: Sendable {
   static func build(
     fileManager: FileManager = .default, now: Date = Date(), includeHistory: Bool = true
   ) -> LocalIndex {
+    guard !Task.isCancelled else { return LocalIndex(candidates: []) }
     var candidates: [Candidate] = []
     candidates.append(contentsOf: scanApps(fileManager: fileManager))
     candidates.append(contentsOf: scanFiles(fileManager: fileManager, now: now))
+    guard !Task.isCancelled else { return LocalIndex(candidates: candidates) }
     candidates.append(contentsOf: SystemToggle.allCases.map(\.candidate))
     candidates.append(contentsOf: scanShortcuts())
-    if includeHistory {
+    if includeHistory, !Task.isCancelled {
       candidates.append(
         contentsOf: ChromeHistory.candidates(
           from: ChromeHistory.load(fileManager: fileManager, now: now), now: now))
@@ -34,8 +36,10 @@ struct LocalIndex: Sendable {
     for directory in appDirectories + [
       fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Applications").path
     ] {
+      guard !Task.isCancelled else { break }
       guard let names = try? fileManager.contentsOfDirectory(atPath: directory) else { continue }
       for name in names where name.hasSuffix(".app") {
+        guard !Task.isCancelled else { break }
         let title = String(name.dropLast(4))
         guard seen.insert(title.lowercased()).inserted else { continue }
         let url = URL(fileURLWithPath: directory).appendingPathComponent(name)
@@ -53,6 +57,7 @@ struct LocalIndex: Sendable {
     var files: [Candidate] = []
     let keys: [URLResourceKey] = [.isDirectoryKey, .contentModificationDateKey, .isHiddenKey]
     for folder in fileDirectories {
+      guard !Task.isCancelled else { break }
       let root = home.appendingPathComponent(folder)
       var urls: [URL] = []
       guard
@@ -60,6 +65,7 @@ struct LocalIndex: Sendable {
           at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
       else { continue }
       for url in top {
+        guard !Task.isCancelled else { break }
         urls.append(url)
         let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
         if values?.isDirectory == true, !url.pathExtension.contains("app"),
@@ -69,6 +75,7 @@ struct LocalIndex: Sendable {
           urls.append(contentsOf: children)
         }
       }
+      guard !Task.isCancelled else { break }
       urls.sort {
         let lhs = try? $0.resourceValues(forKeys: [.contentModificationDateKey])
         let rhs = try? $1.resourceValues(forKeys: [.contentModificationDateKey])
@@ -76,6 +83,7 @@ struct LocalIndex: Sendable {
           > (rhs?.contentModificationDate ?? .distantPast)
       }
       for url in urls.prefix(maxFilesPerDirectory) {
+        guard !Task.isCancelled else { break }
         files.append(fileCandidate(url: url, folder: folder, now: now))
       }
     }
@@ -159,6 +167,7 @@ struct LocalIndex: Sendable {
   }
 
   static func scanShortcuts() -> [Candidate] {
+    guard !Task.isCancelled else { return [] }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
     process.arguments = ["list"]
@@ -175,5 +184,13 @@ struct LocalIndex: Sendable {
         id: "shortcut:\(name)", title: name, subtitle: "Shortcut", kind: .runShortcut,
         keywords: ["shortcut", "automation"], payload: .shortcut(name))
     }
+  }
+}
+
+actor LocalIndexScanner {
+  static let shared = LocalIndexScanner()
+
+  func build(includeHistory: Bool) -> LocalIndex {
+    LocalIndex.build(includeHistory: includeHistory)
   }
 }

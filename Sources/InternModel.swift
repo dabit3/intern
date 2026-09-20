@@ -61,6 +61,7 @@ final class InternModel: ObservableObject {
     frontmostApp: "", recentApps: [], clipboardKind: "empty", timeOfDay: "", weekday: "")
   private let ask: @Sendable (JevRequest) async throws -> JevClient.Result
   private let execute: @MainActor (Candidate) async -> Executor.Outcome
+  private let buildIndex: @Sendable (Bool) async -> LocalIndex
   private let spotlight = SpotlightSearch()
   private var indexTask: Task<Void, Never>?
   private var requestTask: Task<Void, Never>?
@@ -69,6 +70,7 @@ final class InternModel: ObservableObject {
   init(
     defaults: UserDefaults = .standard,
     execute: (@MainActor (Candidate) async -> Executor.Outcome)? = nil,
+    buildIndex: (@Sendable (Bool) async -> LocalIndex)? = nil,
     ask: (@Sendable (JevRequest) async throws -> JevClient.Result)? = nil
   ) {
     self.defaults = defaults
@@ -76,6 +78,7 @@ final class InternModel: ObservableObject {
     let client = JevClient()
     self.ask = ask ?? { try await client.ask($0) }
     self.execute = execute ?? { await Executor.perform($0) }
+    self.buildIndex = buildIndex ?? { await LocalIndexScanner.shared.build(includeHistory: $0) }
     NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
       .receive(on: DispatchQueue.main)
       .sink { [weak self] _ in
@@ -189,10 +192,9 @@ final class InternModel: ObservableObject {
     indexTask?.cancel()
     isIndexing = true
     let includeHistory = preferences.history
-    indexTask = Task { [weak self] in
-      let built = await Task.detached(priority: .userInitiated) {
-        LocalIndex.build(includeHistory: includeHistory)
-      }.value
+    let buildIndex = buildIndex
+    indexTask = Task(priority: .userInitiated) { [weak self] in
+      let built = await buildIndex(includeHistory)
       guard let self, !Task.isCancelled, generation == self.indexGeneration else { return }
       self.isIndexing = false
       self.replaceIndex(built.candidates)

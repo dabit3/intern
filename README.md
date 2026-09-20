@@ -10,6 +10,17 @@ A native macOS launcher for things you remember by meaning: `the last pdf I open
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
+## Download for Mac
+
+[Download Intern.dmg](https://github.com/dabit3/intern/releases/latest/download/Intern.dmg) from [GitHub Releases](https://github.com/dabit3/intern/releases/latest). Requires macOS 14 or later on Apple silicon or Intel. You do not need Xcode or a terminal.
+
+1. Open `Intern.dmg`.
+2. Drag Intern into Applications.
+3. Open Intern from Applications.
+4. Press Option-Space to open the launcher.
+
+Intern runs in the menu bar, not the Dock. For AI ranking, add your TypeSafe API key in Settings. Without a key, local search remains available.
+
 ## What only Intern does
 
 - Describe a file instead of naming it.
@@ -195,6 +206,8 @@ export TYPESAFE_API_KEY=...        # read from the environment; never hardcoded
 
 The built application is `Intern.app`. The Xcode project, scheme and module are named `Intern`.
 
+Debug builds appear as `Intern Dev` in macOS permission prompts and use separate settings from the signed release. Their bundle identifier is `com.devin.typesafe.jev-launcher.debug`. The release keeps `com.devin.typesafe.jev-launcher`, so existing release settings remain available. `run.sh` quits only this checkout's development copy before rebuilding, not the installed release.
+
 `run.sh` execs the binary from the shell so the environment variable is inherited. If you launch the `.app` from Finder instead, the key is read from the Settings field (menu bar ⚡, then Settings, stored in `UserDefaults` under `typesafeAPIKey`). With no key the panel works locally and a header icon explains why. Settings also control Spotlight, Chrome history and local-only mode. Source and local-only changes invalidate pending searches immediately.
 
 - **⌥Space** toggles the panel from anywhere (Carbon `RegisterEventHotKey`; no Accessibility permission needed).
@@ -224,7 +237,7 @@ Errors appear as a compact header icon with a tooltip. Missing keys, HTTP errors
 
 - **Automation (Apple Events)**: the first Dark Mode, Sleep or Empty Trash toggle prompts to control System Events or Finder. `NSAppleEventsUsageDescription` is set in `project.yml`. The build is unsandboxed so it can read the folders it indexes.
 - **Wi-Fi** toggling uses `networksetup`, which may ask for an administrator password on some macOS versions.
-- **Folders**: macOS asks once for Downloads, Desktop and Documents. Chrome's history lives under `~/Library/Application Support`, which needs no prompt.
+- **Folders**: macOS manages access to Downloads, Desktop and Documents separately. Use one installed, signed release for normal use. Old unsigned builds that share its identifier can invalidate saved permissions and cause repeated prompts. Folder scans run one at a time and stop at cancellation checkpoints when the panel closes. Chrome's history lives under `~/Library/Application Support`.
 - Nothing else: no Accessibility, Screen Recording or Full Disk Access.
 
 ## Build and test
@@ -239,9 +252,27 @@ xcrun swift-format lint --strict --recursive Sources Tests
 
 The offline suite covers ranking, typed requests, arithmetic, Chrome history, recency semantics, scopes, persisted pins and workspaces, action validation, manual selection and group edits during late responses, local-only mode and destructive confirmation. `LiveJevTests` and `LiveExperienceTests` are opt-in API probes. See [TESTING.md](TESTING.md) for commands, coverage and the desktop checklist.
 
-## Download and site
+## Package a release
 
-Build `Intern.dmg` locally with `./scripts/make-dmg.sh`; it packages a Release `Intern.app` and an Applications shortcut. The build is unsigned and not notarized.
+The DMG contains a universal app for Apple silicon and Intel, an Applications shortcut, and a Retina installer background. It uses the same bundle identifier as earlier builds, so existing settings stay available.
+
+For a local build, run `./scripts/make-dmg.sh`. This creates `Intern.dmg` and `Intern.dmg.sha256`, a SHA-256 checksum for verifying the download. Local builds use an ad-hoc signature, which does not identify an Apple-registered developer, and are not notarized.
+
+For public distribution, use a Developer ID Application certificate and a `notarytool` profile stored in Keychain:
+
+```sh
+SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+NOTARY_PROFILE="your-profile" \
+RELEASE_VERSION=0.1.0 RELEASE_BUILD=1 \
+  ./scripts/make-dmg.sh
+
+REQUIRE_NOTARIZATION=1 sh scripts/verify-dmg.sh Intern.dmg
+shasum -a 256 -c Intern.dmg.sha256
+```
+
+Notarization is Apple's automated security check. The script signs both the app and DMG, submits each to Apple, and attaches Apple's approval tickets. It verifies both architectures, the installer contents, the signatures, and macOS security acceptance before it produces the final files. Failed signing or notarization stops the build. Existing output files are never overwritten. Finder can ask for permission to arrange the installer window.
+
+Keep Apple credentials in Keychain, not in source files or release notes. Upload `Intern.dmg` and `Intern.dmg.sha256` to a GitHub release whose tag matches the source used for the build. Use a normal release, not a draft or prerelease, so the latest-download link resolves.
 
 The static marketing site is in [`site/`](site/README.md). Open `site/index.html` directly or publish that folder on any static host. Its Download button points to `https://github.com/dabit3/intern/releases/latest/download/Intern.dmg`, so release assets must use that filename.
 

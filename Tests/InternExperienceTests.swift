@@ -233,6 +233,24 @@ private actor PendingJudgments {
   }
 }
 
+private actor PendingIndex {
+  private var continuation: CheckedContinuation<LocalIndex, Never>?
+  private(set) var wasCancelled: Bool?
+
+  func build() async -> LocalIndex {
+    let result = await withCheckedContinuation { continuation = $0 }
+    wasCancelled = Task.isCancelled
+    return result
+  }
+
+  var started: Bool { continuation != nil }
+
+  func finish() {
+    continuation?.resume(returning: LocalIndex(candidates: Fixtures.index))
+    continuation = nil
+  }
+}
+
 @MainActor
 final class InternConcurrencyTests: XCTestCase {
   private func waitUntil(_ condition: () async -> Bool) async {
@@ -241,6 +259,45 @@ final class InternConcurrencyTests: XCTestCase {
       try? await Task.sleep(for: .milliseconds(10))
     }
     XCTFail("Timed out waiting for test state")
+  }
+
+  func testClosingPanelCancelsTheUnderlyingIndexBuild() async throws {
+    let suite = "InternTests.\(UUID())"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defaults.set(true, forKey: "localOnly")
+    defaults.set(false, forKey: "includeSpotlight")
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let pending = PendingIndex()
+    let model = InternModel(defaults: defaults, buildIndex: { _ in await pending.build() })
+    model.rebuildIndex()
+    await waitUntil { await pending.started }
+    model.reset()
+    await pending.finish()
+    await waitUntil { await pending.wasCancelled != nil }
+    let cancelled = await pending.wasCancelled
+    XCTAssertEqual(cancelled, true)
+    XCTAssertFalse(model.isIndexing)
+    XCTAssertEqual(model.indexSize, 0)
+  }
+
+  func testChangingSourcesCancelsTheUnderlyingIndexBuild() async throws {
+    let suite = "InternTests.\(UUID())"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defaults.set(true, forKey: "localOnly")
+    defaults.set(false, forKey: "includeSpotlight")
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let pending = PendingIndex()
+    let model = InternModel(defaults: defaults, buildIndex: { _ in await pending.build() })
+    model.rebuildIndex()
+    await waitUntil { await pending.started }
+    defaults.set(false, forKey: "includeChromeHistory")
+    model.preferencesChanged()
+    await pending.finish()
+    await waitUntil { await pending.wasCancelled != nil }
+    let cancelled = await pending.wasCancelled
+    XCTAssertEqual(cancelled, true)
+    XCTAssertFalse(model.isIndexing)
+    XCTAssertEqual(model.indexSize, 0)
   }
 
   func testOlderQueryAndHiddenPanelRejectLateResponses() async throws {

@@ -56,7 +56,54 @@ final class LatencyStatsTests: XCTestCase {
   }
 }
 
+private final class ScanFileManager: FileManager, @unchecked Sendable {
+  private let lock = NSLock()
+  private var visited: [URL] = []
+  let cancelOnVisit: Bool
+
+  init(cancelOnVisit: Bool = false) {
+    self.cancelOnVisit = cancelOnVisit
+    super.init()
+  }
+
+  override var homeDirectoryForCurrentUser: URL {
+    URL(fileURLWithPath: "/InternTests")
+  }
+
+  var visitedDirectories: [URL] { lock.withLock { visited } }
+
+  override func contentsOfDirectory(
+    at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?,
+    options mask: FileManager.DirectoryEnumerationOptions = []
+  ) throws -> [URL] {
+    lock.withLock { visited.append(url) }
+    if cancelOnVisit { withUnsafeCurrentTask { $0?.cancel() } }
+    return []
+  }
+}
+
 final class LocalIndexTests: XCTestCase {
+  func testCancelledScanDoesNotVisitProtectedFolders() async {
+    let manager = ScanFileManager()
+    let task = Task.detached {
+      withUnsafeCurrentTask { $0?.cancel() }
+      return LocalIndex.scanFiles(fileManager: manager, now: Date())
+    }
+    let files = await task.value
+    XCTAssertTrue(files.isEmpty)
+    XCTAssertTrue(manager.visitedDirectories.isEmpty)
+  }
+
+  func testCancellationDuringFolderAccessStopsBeforeTheNextFolder() async {
+    let manager = ScanFileManager(cancelOnVisit: true)
+    let task = Task.detached {
+      LocalIndex.scanFiles(fileManager: manager, now: Date())
+    }
+    let files = await task.value
+    XCTAssertTrue(files.isEmpty)
+    XCTAssertEqual(manager.visitedDirectories.map(\.lastPathComponent), ["Downloads"])
+  }
+
   func testRecencyPhrases() {
     XCTAssertEqual(LocalIndex.recency(0), "modified just now")
     XCTAssertEqual(LocalIndex.recency(30.0 / 1440), "modified 30 min ago")

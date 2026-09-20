@@ -36,7 +36,9 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `LiveExperienceTests.swift` | Live Jev judgments over fixed candidate fixtures for last-opened PDFs, named workspaces and recently used file groups |
 | `LiveJevTests.swift` | Live API against the machine's real local index and browsing fixtures |
 
-Model tests inject a request function and use isolated `UserDefaults` suites. Executor unit tests validate routing inputs without running system commands. The confirmation test checks only the first Enter; it never empties Trash.
+Model tests inject request and index-building functions and use isolated `UserDefaults` suites. Index cancellation tests use a fake file manager, so they never request access to personal folders. They cover cancellation before scanning, cancellation between folders, panel closure, and source changes. Executor unit tests validate routing inputs without running system commands. The confirmation test checks only the first Enter; it never empties Trash.
+
+Debug builds use `com.devin.typesafe.jev-launcher.debug` and the display name `Intern Dev`. The release keeps its original identifier. Do not assign the release identifier to an unsigned Debug build: macOS then replaces folder permission records when the two copies run. Test hosts do not register the global shortcut or create the launcher panel.
 
 ## Live Jev checks
 
@@ -53,11 +55,36 @@ These probes print the query, selected result, round-trip latency and input-toke
 
 `LiveJevTests` additionally depends on a real index containing three recent Ambassador history entries, a TypeSafe docs visit, unrelated pages, PDFs of different ages and at least two recently added files. Use a disposable macOS account and fresh valid documents. Do not overwrite personal Chrome history. Visit pages normally or seed a dedicated test profile. Results depending on a "last hour" window expire, so recreate their fixtures before running that class.
 
+## Release packaging checks
+
+Run the packaging preflight tests without an Apple account:
+
+```sh
+python3 -B -m unittest discover -s scripts -p 'test_*.py' -v
+sh -n scripts/make-dmg.sh scripts/verify-dmg.sh
+xcrun swift-format lint --strict scripts/render-assets.swift
+```
+
+These tests reject invalid release versions, missing signing identities, extra arguments, and output paths that can overwrite existing files. They replace the build command with a stub and never submit anything to Apple. On macOS, they also inspect the generated Xcode project with `plutil` to verify separate Debug and Release identities.
+
+After building a signed, notarized DMG, verify the exact file intended for upload:
+
+```sh
+REQUIRE_NOTARIZATION=1 sh scripts/verify-dmg.sh Intern.dmg
+shasum -a 256 -c Intern.dmg.sha256
+```
+
+The verifier mounts the DMG read-only. It verifies both CPU architectures, bundle metadata, icons, the installer layout, the Applications shortcut, signatures, attached approval tickets, and macOS security acceptance. Without `REQUIRE_NOTARIZATION=1`, it also supports local ad-hoc builds but does not establish notarization.
+
+Open the DMG in Finder and verify that the app and Applications icons align with the background. Copy the app into Applications and open it. Verify that the menu-bar item and Option-Space shortcut work. Do not run destructive system actions during this smoke test.
+
+To regenerate the checked-in installer artwork, run `xcrun swift scripts/render-assets.swift Resources`. If project resources change, run `xcodegen generate` and repeat the app tests.
+
 ## Desktop acceptance checklist
 
 This is a checklist for a UI pass, not a claim that every interaction has been exercised on the current revision. Run `./run.sh --show` with the key exported, or enable local-only mode in Settings.
 
-The built product is `build/Build/Products/Debug/Intern.app`, with executable `Contents/MacOS/Intern`. Verify the menu bar, Quit item and macOS permission copy use Intern.
+The built product is `build/Build/Products/Debug/Intern.app`, with executable `Contents/MacOS/Intern`. macOS identifies this development build as `Intern Dev` in permission prompts. Verify the signed release DMG separately as `Intern`.
 
 ### Search and recency
 

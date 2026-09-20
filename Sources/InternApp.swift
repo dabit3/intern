@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var hotKey: HotKey?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    guard NSClassFromString("XCTestCase") == nil else { return }
     panel = InternPanelIntern(model: model)
     hotKey = HotKey { [weak self] in self?.togglePanel() }
     if ProcessInfo.processInfo.arguments.contains("--show") {
