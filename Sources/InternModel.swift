@@ -7,6 +7,7 @@ final class InternModel: ObservableObject {
   static let readyThreshold = 0.6
   static let certainTargetThreshold = 0.9
   static let certainSetThreshold = 0.75
+  static let missingAPIKeyMessage = "Add a TypeSafe key in Settings. Local search is available."
 
   @Published var query = "" {
     didSet { if query != oldValue { queryChanged() } }
@@ -42,6 +43,9 @@ final class InternModel: ObservableObject {
   var onExecute: (() -> Void)?
   var onExecutionFailure: (() -> Void)?
   var onPreview: ((URL) -> Void)?
+  var onOpenSettings: ((_ open: () -> Void) -> Void)?
+
+  var needsAPIKey: Bool { lastError == Self.missingAPIKeyMessage }
 
   private let defaults: UserDefaults
   private var index: [Candidate] = []
@@ -225,6 +229,10 @@ final class InternModel: ObservableObject {
     indexSize = candidates.count
     refreshResults()
     if !isEmptyQuery { requestJudgment() }
+  }
+
+  func openSettings(_ open: () -> Void) {
+    if let onOpenSettings { onOpenSettings(open) } else { open() }
   }
 
   func preferencesChanged() {
@@ -681,7 +689,7 @@ final class InternModel: ObservableObject {
   private func describe(_ error: Error) -> String {
     if let failure = error as? JevClient.Failure {
       switch failure {
-      case .missingAPIKey: return "Add a TypeSafe key in Settings. Local search is available."
+      case .missingAPIKey: return Self.missingAPIKeyMessage
       case .rateLimited:
         return "Online ranking is busy. Using local search until the cooldown ends."
       case .http(let code): return "Ranking service returned HTTP \(code). Using local search."

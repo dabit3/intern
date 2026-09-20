@@ -15,11 +15,7 @@ struct InternApp: App {
         Text("Option-Space unavailable").help(error)
       }
       Divider()
-      Button("Settings…") {
-        delegate.prepareForSettings()
-        openSettings()
-        delegate.raiseSettings()
-      }
+      Button("Settings…") { delegate.showSettings { openSettings() } }
       Button("Quit Intern") { NSApplication.shared.terminate(nil) }
     }
     Settings {
@@ -40,6 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard NSClassFromString("XCTestCase") == nil else { return }
     panel = InternPanelIntern(model: model)
+    model.onOpenSettings = { [weak self] open in
+      guard let self else { return open() }
+      self.showSettings(open)
+    }
     hotKey = HotKey { [weak self] in self?.togglePanel() }
     hotKeyError = hotKey?.registrationError
     if ProcessInfo.processInfo.arguments.contains("--show") {
@@ -51,9 +51,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     panel?.toggle()
   }
 
-  func prepareForSettings() {
+  func showSettings(_ open: () -> Void) {
     panel?.hide()
     NSApplication.shared.activate()
+    open()
+    raiseSettings()
   }
 
   func attachSettingsWindow(_ window: NSWindow) {

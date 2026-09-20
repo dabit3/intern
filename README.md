@@ -28,7 +28,7 @@ Intern runs in the menu bar, not the Dock.
 **You need a TypeSafe API key for AI-powered ranking.** Local search works without one.
 
 1. Sign in to the [TypeSafe dashboard](https://console.typesafe.ai/keys) and get an API key. See the [TypeSafe quick start](https://docs.typesafe.ai/introduction/quickstart) for more details.
-2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**.
+2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**. If the icon is hidden, press **Option-Space**, type anything, and click the underlined **Settings** link in the *Add a TypeSafe key in Settings* message.
 3. In the **TypeSafe** section, paste your key into **API key** and click **Save** (or press **Command-S**). **Unsaved changes** becomes **API key saved** once it is stored. No terminal command is needed for the downloaded app.
 4. Under **Search and privacy**, leave **Keep searches on this Mac** turned off to enable online ranking. You can also choose whether to search files with Spotlight and include Chrome browsing history.
 5. Close Settings, press **Option-Space**, and try `the pdf I just downloaded`. Press **Return** to open the selected result. Allow access to folders you want to search when macOS asks.

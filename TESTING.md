@@ -128,9 +128,10 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 2. Rapidly replace queries and change scopes. Replies and Spotlight callbacks for old generations must not replace current results.
 3. Switch to local-only mode and reopen the launcher. Search, pins, preview, workspaces, arithmetic and manual groups should remain available with no Jev requests.
 4. Use an invalid API key in a separate launch or disconnect networking. Verify local results remain usable and the header warning explains the failure.
-5. Remove a disposable file after retrieving it, then try to open it. An error should be shown and no successful launch should be recorded.
-6. Search Empty Trash and press Enter once. A separate confirmation should appear. Press Escape to cancel. Do not confirm in an account with personal Trash contents.
-7. Start a slow action, then enter another query. The old completion must not dismiss that new search.
+5. With no saved key and local-only mode off, type a query. The status line should read *Add a TypeSafe key in Settings* with **Settings** underlined. Clicking it must hide the launcher and open Settings without the menu bar item; the same query must be searchable again afterward.
+6. Remove a disposable file after retrieving it, then try to open it. An error should be shown and no successful launch should be recorded.
+7. Search Empty Trash and press Enter once. A separate confirmation should appear. Press Escape to cancel. Do not confirm in an account with personal Trash contents.
+8. Start a slow action, then enter another query. The old completion must not dismiss that new search.
 
 ## OS permissions and gaps
 

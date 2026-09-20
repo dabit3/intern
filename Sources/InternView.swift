@@ -19,8 +19,11 @@ enum InternFocus: Hashable {
 }
 
 struct InternView: View {
+  static let settingsLink = URL(string: "intern://settings")!
+
   @ObservedObject var model: InternModel
   @FocusState private var focused: InternFocus?
+  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     VStack(spacing: 0) {
@@ -111,20 +114,41 @@ struct InternView: View {
   private var feedback: some View {
     if model.isExecuting || model.lastError != nil || model.status != nil {
       let message = model.isExecuting ? "Running action…" : model.lastError ?? model.status ?? ""
-      Label(
-        message,
-        systemImage: model.isExecuting
-          ? "hourglass" : model.lastError != nil ? "exclamationmark.triangle" : "info.circle"
-      )
+      Label {
+        Text(feedbackText(message))
+      } icon: {
+        Image(
+          systemName: model.isExecuting
+            ? "hourglass" : model.lastError != nil ? "exclamationmark.triangle" : "info.circle")
+      }
       .font(.system(size: 12))
       .foregroundStyle(model.lastError != nil && !model.isExecuting ? Theme.warn : Theme.dim)
       .lineLimit(1)
       .help(message)
+      .environment(
+        \.openURL,
+        OpenURLAction { url in
+          guard url == Self.settingsLink else { return .systemAction }
+          model.openSettings { openSettings() }
+          return .handled
+        }
+      )
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.horizontal, 22)
       .frame(height: InternPanelIntern.feedbackHeight)
       .accessibilityElement(children: .combine)
     }
+  }
+
+  private func feedbackText(_ message: String) -> AttributedString {
+    var text = AttributedString(message)
+    guard !model.isExecuting, model.needsAPIKey, let range = text.range(of: "Settings") else {
+      return text
+    }
+    text[range].link = Self.settingsLink
+    text[range].foregroundColor = Theme.accent
+    text[range].underlineStyle = .single
+    return text
   }
 
   private var scopeBar: some View {

@@ -413,7 +413,37 @@ final class InternConcurrencyTests: XCTestCase {
     model.query = "wifi off"
     XCTAssertEqual(model.inFlight, 0)
     XCTAssertNotNil(model.lastError)
+    XCTAssertFalse(model.needsAPIKey)
     XCTAssertEqual(model.stats.requests, 1)
+  }
+
+  func testMissingKeyOffersSettingsAndOpensThemThroughTheHost() async throws {
+    let suite = "InternTests.\(UUID())"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defaults.set(false, forKey: "includeSpotlight")
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let model = InternModel(defaults: defaults) { _ in throw JevClient.Failure.missingAPIKey }
+    model.replaceIndex(Fixtures.index)
+    model.query = "dark"
+    await waitUntil { model.lastError != nil }
+    XCTAssertEqual(model.lastError, "Add a TypeSafe key in Settings. Local search is available.")
+    XCTAssertTrue(model.needsAPIKey)
+    XCTAssertEqual(model.topHit?.id, Fixtures.darkMode.id)
+
+    var steps: [String] = []
+    model.onOpenSettings = { open in
+      steps.append("prepare")
+      open()
+      steps.append("raise")
+    }
+    model.openSettings { steps.append("open") }
+    XCTAssertEqual(steps, ["prepare", "open", "raise"])
+    model.onOpenSettings = nil
+    model.openSettings { steps.append("direct") }
+    XCTAssertEqual(steps.last, "direct")
+
+    model.reset()
+    XCTAssertFalse(model.needsAPIKey)
   }
 
   func testLocalOnlySwitchInvalidatesAnOutstandingJudgment() async throws {
