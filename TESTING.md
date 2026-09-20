@@ -1,8 +1,8 @@
-# Testing Launcher
+# Testing Intern
 
 ## Setup
 
-Use macOS 14+, Xcode 16+ and the root of the `launcher` checkout. The Xcode project is committed. After adding or removing Swift files, regenerate it with XcodeGen:
+Use macOS 14+, Xcode 16+ and the root of the `intern` checkout. The Xcode project is committed. After adding or removing Swift files, regenerate it with XcodeGen:
 
 ```sh
 brew install xcodegen
@@ -14,10 +14,10 @@ xcodegen generate
 ```sh
 xcrun swift-format lint --strict --recursive Sources Tests
 
-xcodebuild -project Launcher.xcodeproj -scheme Launcher -configuration Debug \
+xcodebuild -project Intern.xcodeproj -scheme Intern -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
 
-xcodebuild -project Launcher.xcodeproj -scheme Launcher -configuration Debug \
+xcodebuild -project Intern.xcodeproj -scheme Intern -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO test
 ```
 
@@ -32,7 +32,7 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `JevQuestionsTests.swift` | Typed question schema, bounded state, ID mapping and tolerant response parsing |
 | `SetsAndHistoryTests.swift` | Copied Chrome SQLite data, visit timestamps, local time windows, group membership and placement |
 | `StatsAndIndexTests.swift` | Token/cost statistics, file candidates, recency wording and Wi-Fi device parsing |
-| `LauncherExperienceTests.swift` | Opened/added/modified evidence, scopes, bounded personal boosts, Spotlight path filtering, execution validation, copy formatting, persistent pins/workspaces, group editing, stale replies, manual selection, local-only mode, cooldowns and Empty Trash confirmation |
+| `InternExperienceTests.swift` | Opened/added/modified evidence, scopes, bounded personal boosts, Spotlight path filtering, execution validation, copy formatting, persistent pins/workspaces, group editing, stale replies, manual selection, local-only mode, cooldowns and Empty Trash confirmation |
 | `LiveExperienceTests.swift` | Live Jev judgments over fixed candidate fixtures for last-opened PDFs, named workspaces and recently used file groups |
 | `LiveJevTests.swift` | Live API against the machine's real local index and browsing fixtures |
 
@@ -44,9 +44,9 @@ The fixed-candidate probes require no disk or browser seeding and open nothing. 
 
 ```sh
 TEST_RUNNER_JEV_LIVE=1 TEST_RUNNER_TYPESAFE_API_KEY="$TYPESAFE_API_KEY" \
-  xcodebuild -project Launcher.xcodeproj -scheme Launcher -configuration Debug \
+  xcodebuild -project Intern.xcodeproj -scheme Intern -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
-  -only-testing:LauncherTests/LiveExperienceTests test
+  -only-testing:InternTests/LiveExperienceTests test
 ```
 
 These probes print the query, selected result, round-trip latency and input-token count. They validate live typed judgments but not retrieval or OS action execution.
@@ -57,7 +57,7 @@ These probes print the query, selected result, round-trip latency and input-toke
 
 This is a checklist for a UI pass, not a claim that every interaction has been exercised on the current revision. Run `./run.sh --show` with the key exported, or enable local-only mode in Settings.
 
-The built product is `build/Build/Products/Debug/Launcher.app`, with executable `Contents/MacOS/Launcher`. Verify the menu bar, Quit item and macOS permission copy use Launcher.
+The built product is `build/Build/Products/Debug/Intern.app`, with executable `Contents/MacOS/Intern`. Verify the menu bar, Quit item and macOS permission copy use Intern.
 
 ### Search and recency
 

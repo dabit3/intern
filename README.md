@@ -1,12 +1,37 @@
-# Launcher
+# Intern
 
-![Launcher homepage with the Download button, Built with Devin attribution, and launcher preview](docs/homepage.png)
+[![Built with Devin](https://img.shields.io/badge/Built%20with-Devin-1a1a1a?style=for-the-badge)](https://devin.ai)
+
+![Intern hero: the title above the panel ranking Q3-Roadmap-Review.pdf first for “the pdf I just downloaded”](docs/homepage.png)
 
 A native macOS launcher for things you remember by meaning: `the last pdf I opened`, `files I used in the last hour`, `open the devin ambassador links I visited today`. Press ⌥Space, describe what you need, and press Enter. Local search finds candidates, [Jev](https://docs.typesafe.ai) judges your intent on each keystroke, and the selected result opens. Pin frequent items, preview files, edit a matching group, or save it as a workspace you can reopen by name.
 
-![Six Launcher examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
+![Six Intern examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
+
+## Twenty things you can do
+
+- Describe a file instead of naming it.
+- `the pdf I just downloaded` opens the newest one.
+- `the last pdf I opened`, judged by actual open dates.
+- `files I modified yesterday`, filtered before Jev sees them.
+- Toggle dark mode with one word.
+- `wifi off` beats `wifi on`, same fuzzy score.
+- Sleep, lock the screen or empty the Trash.
+- `15% of 240` gives `36` inline; Enter copies it.
+- Re-ranked on every keystroke, about 100 ms.
+- Green ↵ appears the moment your intent is unambiguous.
+- Reopen the Chrome pages you visited today.
+- `open the ambassador links I visited this week`, all at once.
+- Time windows like `last hour` or `a few days ago`.
+- Group the files you used this morning into one Open all.
+- Uncheck a member before opening the group.
+- Save a group as a workspace and recall it by name.
+- Quick Look a file without leaving the panel.
+- Reveal in Finder, copy a path or pin anything.
+- Scopes for files, apps, links and workspaces.
+- Frequent launches float up; clear the history any time.
 
 ## Why speed matters
 
@@ -165,19 +190,19 @@ The `ready` wording went through several rounds against the five queries plus de
 Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) only if you change `project.yml` (the generated project is committed).
 
 ```sh
-git clone https://github.com/dabit3/launcher.git
-cd launcher
+git clone https://github.com/dabit3/intern.git
+cd intern
 export TYPESAFE_API_KEY=...        # read from the environment; never hardcoded
 ./run.sh --show                    # builds Debug and launches with the panel open
 ```
 
-The built application is `Launcher.app`. The Xcode project, scheme and module are named `Launcher`.
+The built application is `Intern.app`. The Xcode project, scheme and module are named `Intern`.
 
 `run.sh` execs the binary from the shell so the environment variable is inherited. If you launch the `.app` from Finder instead, the key is read from the Settings field (menu bar ⚡, then Settings, stored in `UserDefaults` under `typesafeAPIKey`). With no key the panel works locally and a header icon explains why. Settings also control Spotlight, Chrome history and local-only mode. Source and local-only changes invalidate pending searches immediately.
 
 - **⌥Space** toggles the panel from anywhere (Carbon `RegisterEventHotKey`; no Accessibility permission needed).
 - **↑ / ↓** move the selection, **↵** runs it, **esc** hides the panel. The example chips in the empty state (`dark`, `wifi off`, `15% of 240`, `the pdf I just downloaded`, `links I visited today`) are clickable.
-- The menu-bar ⚡ item has Toggle Launcher, Settings and Quit. The app has no Dock icon (`LSUIElement`).
+- The menu-bar ⚡ item has Toggle Intern, Settings and Quit. The app has no Dock icon (`LSUIElement`).
 - The panel is a translucent `NSVisualEffectView` HUD that resizes to its content (up to seven rows). App and file rows show the real Finder icon; toggles, the calculator, web search, links and group rows use tinted SF Symbols. A small dot next to the field shows while a request is in flight; the bolt turns green when the top row is ready. The footer is just latency and cost.
 
 | Shortcut | Action |
@@ -208,9 +233,9 @@ Errors appear as a compact header icon with a tooltip. Missing keys, HTTP errors
 ## Build and test
 
 ```sh
-xcodebuild -project Launcher.xcodeproj -scheme Launcher -configuration Debug \
+xcodebuild -project Intern.xcodeproj -scheme Intern -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-xcodebuild -project Launcher.xcodeproj -scheme Launcher -configuration Debug \
+xcodebuild -project Intern.xcodeproj -scheme Intern -configuration Debug \
   -destination 'platform=macOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO test
 xcrun swift-format lint --strict --recursive Sources Tests
 ```
@@ -219,11 +244,11 @@ The offline suite covers ranking, typed requests, arithmetic, Chrome history, re
 
 ## Download and site
 
-Build `Launcher.dmg` locally with `./scripts/make-dmg.sh`; it packages a Release `Launcher.app` and an Applications shortcut. The build is unsigned and not notarized.
+Build `Intern.dmg` locally with `./scripts/make-dmg.sh`; it packages a Release `Intern.app` and an Applications shortcut. The build is unsigned and not notarized.
 
-The static marketing site is in [`site/`](site/README.md). Open `site/index.html` directly or publish that folder on any static host. Its Download button points to `https://github.com/dabit3/launcher/releases/latest/download/Launcher.dmg`, so release assets must use that filename.
+The static marketing site is in [`site/`](site/README.md). Open `site/index.html` directly or publish that folder on any static host. Its Download button points to `https://github.com/dabit3/intern/releases/latest/download/Intern.dmg`, so release assets must use that filename.
 
-Launcher was extracted from [dabit3/jev-experiments](https://github.com/dabit3/jev-experiments). This repository is its maintained home, including Spotlight search, pins, saved workspaces and keyboard actions. It keeps the original `com.devin.typesafe.jev-launcher` bundle identifier so existing settings, pins and workspaces remain available.
+Intern was extracted from [dabit3/jev-experiments](https://github.com/dabit3/jev-experiments). This repository is its maintained home, including Spotlight search, pins, saved workspaces and keyboard actions. It keeps the original `com.devin.typesafe.jev-launcher` bundle identifier so existing settings, pins and workspaces remain available.
 
 ## Limitations
 

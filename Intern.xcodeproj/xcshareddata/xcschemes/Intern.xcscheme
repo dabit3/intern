@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "6F9F89B36FDDF503539E2C95"
-               BuildableName = "Launcher.app"
-               BlueprintName = "Launcher"
-               ReferencedContainer = "container:Launcher.xcodeproj">
+               BlueprintIdentifier = "7E70BF6867428167F6E5E243"
+               BuildableName = "Intern.app"
+               BlueprintName = "Intern"
+               ReferencedContainer = "container:Intern.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
          <BuildActionEntry
@@ -29,10 +29,10 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5993B573F509F1F8707EE48A"
-               BuildableName = "LauncherTests.xctest"
-               BlueprintName = "LauncherTests"
-               ReferencedContainer = "container:Launcher.xcodeproj">
+               BlueprintIdentifier = "9A217E22FE4D09777C21C823"
+               BuildableName = "InternTests.xctest"
+               BlueprintName = "InternTests"
+               ReferencedContainer = "container:Intern.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -46,10 +46,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6F9F89B36FDDF503539E2C95"
-            BuildableName = "Launcher.app"
-            BlueprintName = "Launcher"
-            ReferencedContainer = "container:Launcher.xcodeproj">
+            BlueprintIdentifier = "7E70BF6867428167F6E5E243"
+            BuildableName = "Intern.app"
+            BlueprintName = "Intern"
+            ReferencedContainer = "container:Intern.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -58,10 +58,10 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "5993B573F509F1F8707EE48A"
-               BuildableName = "LauncherTests.xctest"
-               BlueprintName = "LauncherTests"
-               ReferencedContainer = "container:Launcher.xcodeproj">
+               BlueprintIdentifier = "9A217E22FE4D09777C21C823"
+               BuildableName = "InternTests.xctest"
+               BlueprintName = "InternTests"
+               ReferencedContainer = "container:Intern.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -82,10 +82,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6F9F89B36FDDF503539E2C95"
-            BuildableName = "Launcher.app"
-            BlueprintName = "Launcher"
-            ReferencedContainer = "container:Launcher.xcodeproj">
+            BlueprintIdentifier = "7E70BF6867428167F6E5E243"
+            BuildableName = "Intern.app"
+            BlueprintName = "Intern"
+            ReferencedContainer = "container:Intern.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -101,10 +101,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6F9F89B36FDDF503539E2C95"
-            BuildableName = "Launcher.app"
-            BlueprintName = "Launcher"
-            ReferencedContainer = "container:Launcher.xcodeproj">
+            BlueprintIdentifier = "7E70BF6867428167F6E5E243"
+            BuildableName = "Intern.app"
+            BlueprintName = "Intern"
+            ReferencedContainer = "container:Intern.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

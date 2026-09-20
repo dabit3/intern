@@ -11,7 +11,7 @@ final class KeyablePanel: NSPanel {
 
 /// A floating, non-activating panel that sits above every window and every Space, like Spotlight.
 @MainActor
-final class LauncherPanelController: NSObject, NSWindowDelegate {
+final class InternPanelIntern: NSObject, NSWindowDelegate {
   static let panelWidth: CGFloat = 680
   static let headerHeight: CGFloat = 72
   static let scopeHeight: CGFloat = 40
@@ -26,13 +26,13 @@ final class LauncherPanelController: NSObject, NSWindowDelegate {
     return headerHeight + scopeHeight + body + footerHeight
   }
 
-  let model: LauncherModel
+  let model: InternModel
   private let panel: KeyablePanel
   private var keyMonitor: Any?
   private var subscriptions: Set<AnyCancellable> = []
   private var previewWindow: NSWindow?
 
-  init(model: LauncherModel) {
+  init(model: InternModel) {
     self.model = model
     panel = KeyablePanel(
       contentRect: NSRect(
@@ -49,7 +49,7 @@ final class LauncherPanelController: NSObject, NSWindowDelegate {
     panel.hidesOnDeactivate = false
     panel.becomesKeyOnlyIfNeeded = false
     panel.delegate = self
-    let host = NSHostingView(rootView: LauncherView(model: model))
+    let host = NSHostingView(rootView: InternView(model: model))
     host.frame = panel.contentView?.bounds ?? .zero
     host.autoresizingMask = [.width, .height]
     panel.contentView = host
