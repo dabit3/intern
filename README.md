@@ -4,7 +4,9 @@
 
 ![Intern hero: the title above the panel ranking Q3-Roadmap-Review.pdf first for “the pdf I just downloaded”, with a Built by Devin mark](docs/homepage.png)
 
-A native macOS launcher for things you remember by meaning: `the last pdf I opened`, `files I used in the last hour`, `open the devin ambassador links I visited today`. Press ⌥Space, describe what you need, and press Enter. Local search finds candidates, [Jev](https://docs.typesafe.ai) judges your intent on each keystroke, and the selected result opens. Pin frequent items, preview files, edit a matching group, or save it as a workspace you can reopen by name.
+Intern is a native macOS app that finds things the way you remember them. Press ⌥Space, describe what you want — `the pdf I just downloaded`, `files I used in the last hour`, `the typesafe pages I read today` — and press Enter to open it.
+
+Intern searches your files and Chrome history locally, then [Jev](https://docs.typesafe.ai) judges which candidate you mean on every keystroke, about 100 ms per round trip. When one thing clearly fits, it is selected and a green ↵ appears. When several do, Intern offers to open them all, and that group can be saved as a workspace and recalled later by name.
 
 ![Six Intern examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
 
