@@ -1,9 +1,11 @@
+import Darwin
 import Foundation
 import SQLite3
 
-/// Reads a consistent, read-only SQLite snapshot, including committed WAL visits.
+/// Reads Chrome history without writing to the browser's database.
 /// Only title, URL and last-visit time leave this type; nothing is logged.
 enum ChromeHistory {
+  private static let readLock = NSLock()
   static let maxEntries = 3_000
   /// Visits older than this are not indexed at all.
   static let maxAgeDays = 90.0
@@ -87,8 +89,73 @@ enum ChromeHistory {
   }
 
   static func read(database: URL, fileManager: FileManager, now: Date) -> [Entry] {
+    readLock.lock()
+    defer { readLock.unlock() }
     guard !Task.isCancelled, fileManager.fileExists(atPath: database.path) else { return [] }
-    return query(copy: database, now: now)
+    let result = queryResult(copy: database, now: now)
+    guard result.locked, !Task.isCancelled else { return result.entries }
+    let directory = fileManager.temporaryDirectory.appendingPathComponent(
+      "InternHistory-\(UUID().uuidString)", isDirectory: true)
+    do {
+      try fileManager.createDirectory(
+        at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    } catch {
+      return []
+    }
+    defer { try? fileManager.removeItem(at: directory) }
+    let sources = ["", "-wal", "-journal"].map { URL(fileURLWithPath: database.path + $0) }
+    for attempt in 0..<2 {
+      guard !Task.isCancelled else { return [] }
+      do {
+        let before = try sources.map(fileStamp)
+        guard before[0] != nil,
+          before.compactMap({ $0?.size }).reduce(0, +) <= 256 * 1_024 * 1_024
+        else { return [] }
+        let snapshot = directory.appendingPathComponent("\(attempt)", isDirectory: true)
+        try fileManager.createDirectory(at: snapshot, withIntermediateDirectories: false)
+        for (source, stamp) in zip(sources, before) where stamp != nil {
+          guard !Task.isCancelled else { return [] }
+          let destination = snapshot.appendingPathComponent(source.lastPathComponent)
+          if clonefile(source.path, destination.path, 0) != 0 {
+            try fileManager.copyItem(at: source, to: destination)
+          }
+        }
+        guard try sources.map(fileStamp) == before else { continue }
+        return queryResult(
+          copy: snapshot.appendingPathComponent(database.lastPathComponent), now: now,
+          recoverSnapshot: true
+        ).entries
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+
+  private struct FileStamp: Equatable {
+    let inode: ino_t
+    let size: off_t
+    let modifiedSeconds: Int
+    let modifiedNanoseconds: Int
+    let changedSeconds: Int
+    let changedNanoseconds: Int
+  }
+
+  private enum SnapshotError: Error {
+    case inaccessible
+  }
+
+  private static func fileStamp(_ url: URL) throws -> FileStamp? {
+    var info = stat()
+    guard lstat(url.path, &info) == 0 else {
+      if errno == ENOENT { return nil }
+      throw SnapshotError.inaccessible
+    }
+    guard info.st_mode & S_IFMT == S_IFREG else { throw SnapshotError.inaccessible }
+    return FileStamp(
+      inode: info.st_ino, size: info.st_size,
+      modifiedSeconds: info.st_mtimespec.tv_sec, modifiedNanoseconds: info.st_mtimespec.tv_nsec,
+      changedSeconds: info.st_ctimespec.tv_sec, changedNanoseconds: info.st_ctimespec.tv_nsec)
   }
 
   private final class QueryBudget {
@@ -97,13 +164,22 @@ enum ChromeHistory {
   }
 
   static func query(copy: URL, now: Date) -> [Entry] {
-    guard !Task.isCancelled else { return [] }
+    readLock.withLock { queryResult(copy: copy, now: now).entries }
+  }
+
+  private static func queryResult(copy: URL, now: Date, recoverSnapshot: Bool = false)
+    -> (entries: [Entry], locked: Bool)
+  {
+    guard !Task.isCancelled else { return ([], false) }
     var handle: OpaquePointer?
-    guard sqlite3_open_v2(copy.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+    guard
+      sqlite3_open_v2(
+        copy.path, &handle, recoverSnapshot ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY, nil)
+        == SQLITE_OK,
       let db = handle
     else {
       if let handle { sqlite3_close(handle) }
-      return []
+      return ([], false)
     }
     defer { sqlite3_close(db) }
     sqlite3_busy_timeout(db, 50)
@@ -118,6 +194,14 @@ enum ChromeHistory {
       sqlite3_progress_handler(db, 0, nil, nil)
       withExtendedLifetime(budget) {}
     }
+    if recoverSnapshot {
+      var check: OpaquePointer?
+      let prepared = sqlite3_prepare_v2(db, "PRAGMA quick_check(1)", -1, &check, nil)
+      defer { sqlite3_finalize(check) }
+      guard prepared == SQLITE_OK, let check, sqlite3_step(check) == SQLITE_ROW,
+        let result = sqlite3_column_text(check, 0), String(cString: result) == "ok"
+      else { return ([], false) }
+    }
     let sql = """
       SELECT url, title, last_visit_time, visit_count FROM urls
       WHERE last_visit_time > ? AND last_visit_time <= ? AND hidden = 0
@@ -125,8 +209,10 @@ enum ChromeHistory {
       ORDER BY last_visit_time DESC, url ASC LIMIT ?
       """
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-      return []
+    let prepared = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
+    guard prepared == SQLITE_OK, let statement else {
+      sqlite3_finalize(statement)
+      return ([], prepared == SQLITE_BUSY || prepared == SQLITE_LOCKED)
     }
     defer { sqlite3_finalize(statement) }
     let oldest = now.addingTimeInterval(-maxAgeDays * 86_400)
@@ -134,7 +220,9 @@ enum ChromeHistory {
     sqlite3_bind_int64(statement, 2, chromeTime(from: now))
     sqlite3_bind_int(statement, 3, Int32(maxEntries))
     var entries: [Entry] = []
-    while !budget.expired, sqlite3_step(statement) == SQLITE_ROW {
+    var step = sqlite3_step(statement)
+    while !budget.expired, step == SQLITE_ROW {
+      defer { step = sqlite3_step(statement) }
       guard let rawURL = sqlite3_column_text(statement, 0),
         let url = URL(string: String(cString: rawURL)),
         let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
@@ -147,7 +235,10 @@ enum ChromeHistory {
           lastVisit: date(fromChromeTime: sqlite3_column_int64(statement, 2)),
           visitCount: max(0, Int(sqlite3_column_int64(statement, 3)))))
     }
-    return entries
+    guard step == SQLITE_DONE, !budget.expired else {
+      return ([], step == SQLITE_BUSY || step == SQLITE_LOCKED)
+    }
+    return (entries, false)
   }
 
   static func candidates(from entries: [Entry], now: Date) -> [Candidate] {

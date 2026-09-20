@@ -98,7 +98,7 @@ The fuzzy matcher gets plausible PDFs into the shortlist. Jev compares their add
 `open devin ambassador links I visited in the past 24 hours` produces the second screenshot above. In order:
 
 1. **Time window, in code.** `TimeWindow.parse` recognises `past 24 hours`, `last hour`, `yesterday`, `today`, `this week`, `last month`, `this morning`, `earlier today`, `a few days ago` and similar phrases and turns them into a `since`/`until` pair. Only candidates dated inside the window are eligible, the phrase is stripped from the text that gets fuzzy-matched, and the window is sent to Jev as `time_window`.
-2. **Chrome history, in code.** `ChromeHistory` reads a read-only SQLite snapshot of each regular profile's history, including committed WAL visits. It keeps the last 90 days of `http(s)` visits, merges duplicate URLs across profiles and turns each row into a candidate: page title, host, absolute visit time, plus host and title words as keywords. Only the rows that survive the window and the fuzzy filter are sent (up to 30 with a window, 13 without). The database never leaves the machine.
+2. **Chrome history, in code.** `ChromeHistory` queries each regular profile read-only, including committed WAL visits. When Chrome holds an exclusive lock, it copies the database and journal sidecars into a private disposable snapshot, checks for concurrent file changes and lets SQLite recover and validate only that copy. The snapshot fallback is limited to 256 MiB. It keeps the last 90 days of `http(s)` visits, merges duplicate URLs across profiles and turns each row into a candidate: page title, host, absolute visit time, plus host and title words as keywords. Only the rows that survive the window and the fuzzy filter are sent (up to 30 with a window, 13 without). The database never leaves the machine.
 3. **Two extra questions in the same request.** `scope` is a Choice between `one` (a specific item) and `all` (every candidate that fits). `match_cN` is one Noul per real candidate: does this row fit the description? This is the [rerank pattern](https://docs.typesafe.ai/cookbooks/rerank_typesafe) from the TypeSafe cookbooks. Both come back in the same round trip as `target`, `action` and `ready`.
 4. **Group row, in code.** Rows with `match ≥ 0.6` (at least two, at most 25) form the set. The panel adds a synthetic `Open all 3 links` row: first when `P(all) ≥ 0.5`, right under the best single hit when Jev is torn (`0.15 ≤ P(all) < 0.5`), and not at all when the query is clearly about one thing (`P(all) < 0.15`). Members get a checkmark; ↓ still walks through them one by one. The group row is ready only when `P(all) ≥ 0.75`.
 5. **Enter opens them.** URLs use their registered browser, with group members batched by application handler; other members run through the normal single-item path. Nothing runs without Enter.
@@ -145,8 +145,8 @@ Each query change starts a `POST /v1/systemone` with `model: jev-latest`, unless
   "context": { "frontmost_app": "Finder", "recent_apps": ["Finder", "Safari"], "clipboard_kind": "text", "time_of_day": "afternoon", "weekday": "Thursday" },
   "time_window": null,
   "candidates": [
-    { "id": "c0", "kind": "open_file", "title": "Q3-Roadmap-Review.pdf", "detail": "PDF in ~/Downloads · modified 16 min ago", "recency": { "basis": "modified", "seconds_ago": 964 } },
-    { "id": "c1", "kind": "open_file", "title": "invoice-2026-08.pdf", "detail": "PDF in ~/Downloads · modified 1 month ago", "recency": { "basis": "modified", "seconds_ago": 2678400 } },
+    { "id": "c0", "kind": "open_file", "title": "Q3-Roadmap-Review.pdf", "detail": "PDF in ~/Downloads · modified 16 min ago", "recency": { "basis": "modified", "seconds_ago": 964, "newest_rank": 1 } },
+    { "id": "c1", "kind": "open_file", "title": "invoice-2026-08.pdf", "detail": "PDF in ~/Downloads · modified 1 month ago", "recency": { "basis": "modified", "seconds_ago": 2678400, "newest_rank": 2 } },
     { "id": "c6", "kind": "web_search", "title": "Search the web for “the pdf I”", "detail": "Opens your default browser" }
   ]
 }
@@ -162,7 +162,7 @@ Candidates are the top 13 fuzzy matches from the merged local sources (30 when t
 4. `scope`: Choice between `one` and `all`, described above.
 5. `match_cN`: one Noul per real candidate (synthetic calculator and web rows excluded), described above.
 
-**Ranking** is deterministic given the answer: `score = 0.65 · P(target) + 0.20 · P(action matches kind) + 0.15 · fuzzy`, plus `0.25 · P(all) · P(match)` for rows in the set so members sit together under the group row. Without an answer the score is just `fuzzy`.
+**Ranking** is deterministic given the answer. Let `w = min(1, 2 · max(target confidence, lead over the next candidate))`. Then `score = w · (0.65 · P(target) + 0.20 · P(action matches kind)) + (1 − 0.85 · w) · fuzzy`, plus `0.25 · P(all) · P(match)` for rows in the set. Strong online judgments use the full semantic weighting; uncertain judgments retain more local relevance. Small probability-total differences from hundredth-place rounding are normalized; incomplete or invalid target distributions fall back locally. Without an answer the score is just `fuzzy`.
 
 **In-flight handling**: a response must belong to the current sequence and its task must not be canceled. Spotlight callbacks also check their search generation. While a replacement request is in flight, previous probabilities may stay visible but cannot light the readiness badge. Manual selection is preserved by candidate identity. Membership edits survive reordering. Late action completions cannot dismiss a newer query.
 

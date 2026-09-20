@@ -369,6 +369,52 @@ final class IndexingQualityTests: XCTestCase {
     XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - started, 1)
   }
 
+  func testExclusiveBrowserConnectionsStillExposeCommittedHistory() throws {
+    for wal in [false, true] {
+      let name = "Exclusive-\(wal)"
+      let db = try database(name, wal: wal)
+      defer { sqlite3_close(db) }
+      try sql("PRAGMA locking_mode=EXCLUSIVE;", db: db)
+      let timestamp = ChromeHistory.chromeTime(from: now.addingTimeInterval(-60))
+      try sql(
+        "INSERT INTO urls VALUES ('https://example.com/committed', 'Committed', \(timestamp), 1, 0);",
+        db: db)
+      let source = home.appendingPathComponent(name)
+      let before = try Data(contentsOf: source)
+      let walURL = home.appendingPathComponent(name + "-wal")
+      let walBefore = try? Data(contentsOf: walURL)
+      XCTAssertTrue(ChromeHistory.query(copy: source, now: now).isEmpty)
+      let entries = ChromeHistory.read(database: source, fileManager: manager, now: now)
+      XCTAssertEqual(entries.map(\.title), ["Committed"], "wal=\(wal)")
+      XCTAssertEqual(try Data(contentsOf: source), before)
+      XCTAssertEqual(try? Data(contentsOf: walURL), walBefore)
+    }
+  }
+
+  func testLockedSnapshotRecoversWithoutExposingUncommittedVisits() throws {
+    let db = try database("History")
+    defer { sqlite3_close(db) }
+    let timestamp = ChromeHistory.chromeTime(from: now.addingTimeInterval(-60))
+    try sql(
+      "INSERT INTO urls VALUES ('https://example.com/committed', 'Committed', \(timestamp), 1, 0);",
+      db: db)
+    try sql("PRAGMA cache_size=1; BEGIN EXCLUSIVE;", db: db)
+    defer { try? sql("ROLLBACK;", db: db) }
+    try sql(
+      """
+      INSERT INTO urls VALUES ('https://example.com/uncommitted',
+        '\(String(repeating: "uncommitted", count: 10_000))', \(timestamp), 1, 0);
+      """, db: db)
+    let source = home.appendingPathComponent("History")
+    let before = try Data(contentsOf: source)
+    let journal = home.appendingPathComponent("History-journal")
+    let journalBefore = try Data(contentsOf: journal)
+    let entries = ChromeHistory.read(database: source, fileManager: manager, now: now)
+    XCTAssertEqual(entries.map(\.title), ["Committed"])
+    XCTAssertEqual(try Data(contentsOf: source), before)
+    XCTAssertEqual(try Data(contentsOf: journal), journalBefore)
+  }
+
   func testHistorySnapshotIncludesCommittedWALVisitsWithoutChangingDatabase() throws {
     let db = try database("History", wal: true)
     defer { sqlite3_close(db) }
