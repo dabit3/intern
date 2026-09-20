@@ -225,6 +225,10 @@ final class StateQualityTests: XCTestCase {
     XCTAssertEqual(model.stats.requests, 1)
   }
 
+  private static let darkReader = Candidate(
+    id: "app:darkreader", title: "Dark Reader", subtitle: "Application", kind: .openApp,
+    payload: .app(URL(fileURLWithPath: "/Applications/Dark Reader.app")))
+
   func testStaleSuccessDoesNotPolluteLatencyOrTokenStatistics() async throws {
     let (defaults, suite) = try defaults()
     defer { defaults.removePersistentDomain(forName: suite) }
@@ -234,7 +238,7 @@ final class StateQualityTests: XCTestCase {
     model.replaceIndex(Fixtures.index)
     model.query = "dark"
     await waitUntil { await queue.count == 1 }
-    model.replaceIndex(Fixtures.index + [Fixtures.invoice])
+    model.replaceIndex(Fixtures.index + [Self.darkReader])
     await waitUntil { await queue.count == 2 }
 
     await queue.finish(0, title: Fixtures.darkMode.title)
@@ -385,7 +389,34 @@ final class StateQualityTests: XCTestCase {
     XCTAssertNil(model.lastError)
   }
 
-  func testReplacingIndexClearsOldConfidenceWhileNewJudgmentIsPending() async throws {
+  func testUnchangedCandidatesKeepTheJudgmentFreshWithoutAskingAgain() async throws {
+    let (defaults, suite) = try defaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(false, forKey: "includeSpotlight")
+    let queue = JudgmentQueue()
+    let model = InternModel(defaults: defaults, ask: { try await queue.ask($0) })
+    model.replaceIndex(Fixtures.index)
+    model.query = "dark"
+    await waitUntil { await queue.count == 1 }
+    await queue.finish(0, title: Fixtures.darkMode.title)
+    await waitUntil { model.judgmentIsFresh }
+    XCTAssertTrue(model.isReady)
+
+    // An unrelated file joins the index and a trailing space is typed: same question, same answer.
+    model.replaceIndex(Fixtures.index + [Fixtures.invoice])
+    model.query = "dark "
+    XCTAssertNotNil(model.judgment)
+    XCTAssertFalse(model.judgmentIsFresh)
+    XCTAssertFalse(model.isReady)
+    try? await Task.sleep(for: .milliseconds(300))
+    let requests = await queue.count
+    XCTAssertEqual(requests, 0)
+    XCTAssertTrue(model.judgmentIsFresh)
+    XCTAssertTrue(model.isReady)
+    XCTAssertEqual(model.stats.requests, 1)
+  }
+
+  func testChangedCandidatesKeepOldConfidenceAsStaleWhileNewJudgmentIsPending() async throws {
     let (defaults, suite) = try defaults()
     defer { defaults.removePersistentDomain(forName: suite) }
     defaults.set(false, forKey: "includeSpotlight")
@@ -397,14 +428,18 @@ final class StateQualityTests: XCTestCase {
     await queue.finish(0, title: Fixtures.darkMode.title)
     await waitUntil { model.judgmentIsFresh }
 
-    model.replaceIndex(Fixtures.index + [Fixtures.invoice])
+    model.replaceIndex(Fixtures.index + [Self.darkReader])
 
-    XCTAssertNil(model.judgment)
+    XCTAssertNotNil(model.judgment)
+    XCTAssertFalse(model.judgmentIsFresh)
     XCTAssertFalse(model.isReady)
-    XCTAssertTrue(model.hits.allSatisfy { $0.jevProbability == nil })
+    XCTAssertEqual(model.topHit?.id, Fixtures.darkMode.id)
+    XCTAssertTrue(model.hits.contains { $0.id == Self.darkReader.id })
     await waitUntil { await queue.count == 1 }
-    await queue.finish(0, title: Fixtures.darkMode.title)
+    await queue.finish(0, title: Self.darkReader.title)
     await waitUntil { model.judgmentIsFresh }
+    XCTAssertEqual(model.topHit?.id, Self.darkReader.id)
+    XCTAssertTrue(model.isReady)
   }
 
   func testMalformedRefreshKeepsLocalOrderingAndClearsOnlineConfidence() async throws {
@@ -415,11 +450,14 @@ final class StateQualityTests: XCTestCase {
     let model = InternModel(defaults: defaults, ask: { try await queue.ask($0) })
     model.replaceIndex(Fixtures.index)
     model.query = "wifi"
-    let localOrder = model.hits.map(\.id)
     await waitUntil { await queue.count == 1 }
     await queue.finish(0, title: Fixtures.wifiOff.title)
     await waitUntil { model.judgmentIsFresh }
-    model.replaceIndex(Fixtures.index)
+    model.query = "wifi o"
+    let localOrder = Ranker.rank(
+      Ranker.prefilter(query: "wifi o", index: Fixtures.index), judgment: nil
+    ).map(\.id)
+    XCTAssertNotNil(model.judgment)
     await waitUntil { await queue.count == 1 }
 
     await queue.finishMalformed()

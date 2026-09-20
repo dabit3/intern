@@ -26,17 +26,39 @@ enum Fuzzy {
     }
   }
 
+  /// True for an incomplete filler word: "j", "ju" and "jus" on the way to "just".
+  static func isStopwordPrefix(_ word: String) -> Bool {
+    !word.isEmpty && !stopwords.contains(word) && stopwords.contains { $0.hasPrefix(word) }
+  }
+
+  struct Term: Sendable {
+    let text: String
+    let count: Int
+    let bytes: [UInt8]
+
+    init(_ text: String) {
+      self.text = text
+      count = text.count
+      bytes = Array(text.utf8)
+    }
+  }
+
   struct Query {
     let all: [String]
     let meaningful: [String]
     let directed: [String]
     let joined: String
-    let weightedMeaningful: [(text: String, count: Int, length: Int)]
-    let weightedDirected: [(text: String, count: Int, length: Int)]
+    let weightedMeaningful: [(term: Term, count: Int)]
+    let weightedDirected: [(term: Term, count: Int)]
 
     init(_ text: String) {
       all = tokens(text)
-      let filtered = all.filter { !stopwords.contains($0) }
+      var filtered = all.filter { !stopwords.contains($0) }
+      // A trailing token that is only the beginning of a filler word is still being typed;
+      // scoring it as unmatched would empty the list until the word completes.
+      if filtered.count > 1, let last = all.last, filtered.last == last, isStopwordPrefix(last) {
+        filtered.removeLast()
+      }
       meaningful = filtered.isEmpty ? all : filtered
       directed = all.filter { !stopwords.contains($0) || $0 == "on" || $0 == "show" }
       joined = all.joined()
@@ -44,14 +66,36 @@ enum Fuzzy {
       weightedDirected = Self.weighted(directed)
     }
 
-    private static func weighted(_ words: [String]) -> [(text: String, count: Int, length: Int)] {
+    private static func weighted(_ words: [String]) -> [(term: Term, count: Int)] {
       var counts: [String: Int] = [:]
       var ordered: [String] = []
       for word in words {
         if counts[word] == nil { ordered.append(word) }
         counts[word, default: 0] += 1
       }
-      return ordered.map { ($0, counts[$0, default: 0], $0.count) }
+      return ordered.map { (Term($0), counts[$0, default: 0]) }
+    }
+  }
+
+  /// A candidate's searchable text, tokenized once so scoring a keystroke allocates nothing.
+  struct Document: Sendable {
+    let titleTokens: [String]
+    let joinedTitle: String
+    let joinedTitleBytes: [UInt8]
+    let terms: [Term]
+    let initials: String
+    let longestTerm: Int
+    let isToggle: Bool
+
+    init(_ candidate: Candidate) {
+      titleTokens = tokens(candidate.title)
+      joinedTitle = titleTokens.joined()
+      joinedTitleBytes = Array(joinedTitle.utf8)
+      terms = (titleTokens + candidate.keywords.flatMap(tokens) + candidate.appRoleTerms).map(
+        Term.init)
+      initials = String(titleTokens.compactMap(\.first))
+      longestTerm = terms.map(\.bytes.count).max() ?? 0
+      isToggle = candidate.kind == .systemToggle
     }
   }
 
@@ -61,29 +105,26 @@ enum Fuzzy {
   }
 
   static func score(query: Query, candidate: Candidate, exactQuery: Query? = nil) -> Double {
+    score(query: query, document: Document(candidate), exactQuery: exactQuery)
+  }
+
+  static func score(query: Query, document: Document, exactQuery: Query? = nil) -> Double {
     guard !query.all.isEmpty || exactQuery != nil else { return 0 }
-    let meaningful = candidate.kind == .systemToggle ? query.directed : query.meaningful
-    let titleTokens = tokens(candidate.title)
-    let joinedTitle = titleTokens.joined()
+    let meaningful = document.isToggle ? query.directed : query.meaningful
     let exact = exactQuery ?? query
-    let exactWords = candidate.kind == .systemToggle ? exact.directed : exact.meaningful
-    if exact.all == titleTokens || exactWords == titleTokens
-      || exact.joined == joinedTitle
+    let exactWords = document.isToggle ? exact.directed : exact.meaningful
+    if exact.all == document.titleTokens || exactWords == document.titleTokens
+      || exact.joined == document.joinedTitle
     {
       return 1
     }
     guard !meaningful.isEmpty else { return 0 }
-    let terms = titleTokens + candidate.keywords.flatMap(tokens) + candidate.appRoleTerms
-    let initials = String(titleTokens.compactMap(\.first))
 
     var total = 0.0
     var unmatched = 0
-    let weighted =
-      candidate.kind == .systemToggle ? query.weightedDirected : query.weightedMeaningful
+    let weighted = document.isToggle ? query.weightedDirected : query.weightedMeaningful
     for token in weighted {
-      let best = bestMatch(
-        token: token.text, length: token.length, terms: terms, joinedTitle: joinedTitle,
-        initials: initials)
+      let best = bestMatch(token: token.term, document: document)
       if best == 0 { unmatched += token.count }
       total += best * Double(token.count)
     }
@@ -93,77 +134,86 @@ enum Fuzzy {
     return min(0.95, score)
   }
 
-  private static func bestMatch(
-    token: String, length: Int, terms: [String], joinedTitle: String, initials: String
-  )
-    -> Double
-  {
-    guard
-      length <= joinedTitle.utf8.count || terms.contains(where: { length <= $0.utf8.count + 1 })
-    else {
+  private static func bestMatch(token: Term, document: Document) -> Double {
+    let length = token.count
+    guard length <= document.joinedTitleBytes.count || length <= document.longestTerm + 1 else {
       return 0
     }
     var best = 0.0
-    for term in terms {
-      if term == token {
+    for term in document.terms {
+      if term.text == token.text {
         return 0.9
       }
-      if token.hasSuffix("s"), String(token.dropLast()) == term {
+      if token.text.hasSuffix("s"), token.bytes.dropLast().elementsEqual(term.bytes) {
         best = max(best, 0.88)
       }
-      if term.hasPrefix(token) {
+      if term.text.hasPrefix(token.text) {
         best = max(best, 0.72 + 0.15 * Double(length) / Double(term.count))
       }
     }
     if best > 0 { return best }
-    if length >= 2, initials.hasPrefix(token) {
+    if length >= 2, document.initials.hasPrefix(token.text) {
       return 0.7
     }
-    if joinedTitle.contains(token) {
+    if document.joinedTitle.contains(token.text) {
       return 0.55
     }
     if length >= 4,
-      terms.contains(where: { $0.count >= 4 && isSingleEdit(token, length: length, $0) })
+      document.terms.contains(where: { $0.count >= 4 && isSingleEdit(token.bytes, $0.bytes) })
     {
       return 0.65
     }
-    if length >= 3, let contiguity = subsequenceContiguity(token, in: joinedTitle) {
+    if length >= 3,
+      let contiguity = subsequenceContiguity(token.bytes, in: document.joinedTitleBytes)
+    {
       return 0.2 + 0.2 * contiguity
     }
     return 0
   }
 
-  private static func isSingleEdit(_ lhs: String, length: Int, _ rhs: String) -> Bool {
-    guard abs(length - rhs.count) <= 1 else { return false }
-    let a = Array(lhs)
-    let b = Array(rhs)
+  static func isSingleEdit(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+    guard abs(a.count - b.count) <= 1 else { return false }
     if a.count == b.count {
-      let differences = a.indices.filter { a[$0] != b[$0] }
-      if differences.count == 1 { return true }
-      guard differences.count == 2, differences[1] == differences[0] + 1 else { return false }
-      let index = differences[0]
-      return a[index] == b[index + 1] && a[index + 1] == b[index]
+      var first = -1
+      var second = -1
+      for index in a.indices where a[index] != b[index] {
+        if first < 0 {
+          first = index
+        } else if second < 0 {
+          second = index
+        } else {
+          return false
+        }
+      }
+      if first < 0 { return false }
+      if second < 0 { return true }
+      return second == first + 1 && a[first] == b[second] && a[second] == b[first]
     }
     let shorter = a.count < b.count ? a : b
     let longer = a.count < b.count ? b : a
     var index = 0
     while index < shorter.count, shorter[index] == longer[index] { index += 1 }
-    return shorter[index...] == longer[(index + 1)...]
+    return shorter[index...].elementsEqual(longer[(index + 1)...])
   }
 
   /// Returns the fraction of adjacent matches when `needle` is a subsequence of `haystack`.
   static func subsequenceContiguity(_ needle: String, in haystack: String) -> Double? {
-    var needleIndex = needle.startIndex
-    var lastMatch: String.Index?
+    subsequenceContiguity(Array(needle.utf8), in: Array(haystack.utf8))
+  }
+
+  static func subsequenceContiguity(_ needle: [UInt8], in haystack: [UInt8]) -> Double? {
+    guard !needle.isEmpty else { return 1 }
+    var needleIndex = 0
+    var lastMatch = -2
     var adjacent = 0
-    for index in haystack.indices where needleIndex < needle.endIndex {
+    for index in haystack.indices where needleIndex < needle.count {
       if haystack[index] == needle[needleIndex] {
-        if let last = lastMatch, haystack.index(after: last) == index { adjacent += 1 }
+        if lastMatch == index - 1 { adjacent += 1 }
         lastMatch = index
-        needleIndex = needle.index(after: needleIndex)
+        needleIndex += 1
       }
     }
-    guard needleIndex == needle.endIndex else { return nil }
+    guard needleIndex == needle.count else { return nil }
     return needle.count > 1 ? Double(adjacent) / Double(needle.count - 1) : 1
   }
 }

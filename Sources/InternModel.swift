@@ -8,6 +8,10 @@ final class InternModel: ObservableObject {
   static let certainTargetThreshold = 0.9
   static let certainSetThreshold = 0.75
   static let missingAPIKeyMessage = "Add a TypeSafe key in Settings. Local search is available."
+  static let cooldownMessage =
+    "Online ranking is busy. Using local search until the cooldown ends."
+  static let oversizedQueryMessage =
+    "Query is too long for online ranking. Local results are available."
 
   @Published var query = "" {
     didSet { if query != oldValue { queryChanged() } }
@@ -48,11 +52,30 @@ final class InternModel: ObservableObject {
 
   var needsAPIKey: Bool { lastError == Self.missingAPIKeyMessage }
 
+  /// Typing pauses this long before a keystroke asks Jev or Spotlight; local results never wait.
+  var judgmentDelay: Duration = .milliseconds(150)
+  var spotlightDelay: Duration = .milliseconds(60)
+
   private let defaults: UserDefaults
-  private var index: [Candidate] = []
-  private var spotlightCandidates: [Candidate] = []
-  private var libraryCandidates: [Candidate] = []
+  private var index: [Candidate] = [] {
+    didSet { mergedEntries = nil }
+  }
+  private var spotlightCandidates: [Candidate] = [] {
+    didSet { mergedEntries = nil }
+  }
+  private var libraryCandidates: [Candidate] = [] {
+    didSet { mergedEntries = nil }
+  }
+  private var mergedEntries: [Ranker.Entry]?
+  private var documents: [DocumentKey: Fuzzy.Document] = [:]
+  /// The effective query the current Spotlight results were for.
+  private var spotlightQuery = ""
   private var prefiltered = Ranker.Prefiltered(candidates: [], fuzzy: [:])
+  /// The effective query the current judgment answered, so refinements can keep it as stale.
+  private var judgedQuery = ""
+  private var lastRequest: RequestSignature?
+  private var judgmentTask: Task<Void, Never>?
+  private var spotlightTask: Task<Void, Never>?
   private var sequence = 0
   private var queryGeneration = 0
   private var indexGeneration = 0
@@ -100,6 +123,37 @@ final class InternModel: ObservableObject {
   deinit {
     indexTask?.cancel()
     requestTask?.cancel()
+    judgmentTask?.cancel()
+    spotlightTask?.cancel()
+  }
+
+  private struct RequestSignature: Equatable {
+    let query: String
+    let candidateIDs: [String]
+  }
+
+  /// Tokenized text depends only on these, so a rebuilt index reuses documents for unchanged items.
+  private struct DocumentKey: Hashable {
+    let id: String
+    let title: String
+    let keywords: [String]
+
+    init(_ candidate: Candidate) {
+      id = candidate.id
+      title = candidate.title
+      keywords = candidate.keywords
+    }
+  }
+
+  private var effectiveQuery: String {
+    query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  }
+
+  /// A judgment still says something useful while the same request is being typed further
+  /// (or backspaced), so it stays visible as stale instead of the list snapping to local order.
+  static func isRefinement(_ judged: String, _ current: String) -> Bool {
+    guard !judged.isEmpty, !current.isEmpty else { return false }
+    return current.hasPrefix(judged) || judged.hasPrefix(current)
   }
 
   private struct Preferences: Equatable {
@@ -188,7 +242,8 @@ final class InternModel: ObservableObject {
     if top.id == Ranker.groupID {
       return memberSelection == nil && judgment.setProbability >= Self.certainSetThreshold
     }
-    return judgment.ready >= Self.readyThreshold
+    let jevTop = judgment.targetProbabilities.max { $0.value < $1.value }?.key
+    return (judgment.ready >= Self.readyThreshold && jevTop == top.id)
       || (top.jevProbability ?? 0) >= Self.certainTargetThreshold
   }
 
@@ -269,14 +324,13 @@ final class InternModel: ObservableObject {
     isIndexing = false
     query = ""
     queryGeneration += 1
-    sequence += 1
-    requestTask?.cancel()
-    inFlight = 0
-    spotlight.stop()
+    cancelRequests()
     hits = []
     selection = 0
     judgment = nil
     judgmentIsFresh = false
+    judgedQuery = ""
+    lastRequest = nil
     confirmation = nil
     reviewedGroup = nil
     memberSelection = nil
@@ -514,34 +568,65 @@ final class InternModel: ObservableObject {
     confirmation = nil
     actionsVisible = false
     savingWorkspace = false
-    judgment = nil
-    judgmentIsFresh = false
     status = nil
     lastError = nil
     selection = 0
-    spotlightCandidates = []
-    spotlight.stop()
+    cancelRequests()
+    let refining = Self.isRefinement(judgedQuery, effectiveQuery)
+    if judgment != nil, refining {
+      judgmentIsFresh = false
+    } else {
+      judgment = nil
+      judgmentIsFresh = false
+    }
+    if !spotlightCandidates.isEmpty,
+      isEmptyQuery || !Self.isRefinement(spotlightQuery, effectiveQuery)
+    {
+      spotlightCandidates = []
+    }
     refreshResults()
-    requestJudgment()
-    if preferences.spotlight, !isEmptyQuery, scope == .all || scope == .files {
-      spotlight.search(query) { [weak self] candidates in
-        guard let self, generation == self.queryGeneration else { return }
-        let previous = self.prefiltered
-        self.spotlightCandidates = candidates
-        self.refreshResults()
-        if previous != self.prefiltered { self.requestJudgment() }
+    guard !isEmptyQuery else { return }
+    if !isLocalOnly {
+      if query.utf8.count > JevQuestions.maxQueryBytes {
+        lastError = Self.oversizedQueryMessage
+      } else if Date() < retryAfter {
+        lastError = Self.cooldownMessage
+      }
+    }
+    judgmentTask = Task { [weak self, judgmentDelay] in
+      try? await Task.sleep(for: judgmentDelay)
+      guard let self, !Task.isCancelled, generation == self.queryGeneration else { return }
+      self.requestJudgment()
+    }
+    if preferences.spotlight, scope == .all || scope == .files {
+      spotlightTask = Task { [weak self, spotlightDelay] in
+        try? await Task.sleep(for: spotlightDelay)
+        guard let self, !Task.isCancelled, generation == self.queryGeneration else { return }
+        self.spotlight.search(self.query) { [weak self] candidates in
+          guard let self, generation == self.queryGeneration else { return }
+          self.spotlightQuery = self.effectiveQuery
+          if candidates != self.spotlightCandidates { self.spotlightCandidates = candidates }
+          self.refreshResults()
+          self.requestJudgment()
+        }
       }
     }
   }
 
-  private func refreshResults() {
-    if let reviewedGroup {
-      prefiltered = Ranker.Prefiltered(
-        candidates: reviewedGroup,
-        fuzzy: Dictionary(uniqueKeysWithValues: reviewedGroup.map { ($0.id, 1) }))
-      updateHits()
-      return
-    }
+  private func cancelRequests() {
+    judgmentTask?.cancel()
+    judgmentTask = nil
+    spotlightTask?.cancel()
+    spotlightTask = nil
+    spotlight.stop()
+    sequence += 1
+    requestTask?.cancel()
+    requestTask = nil
+    inFlight = 0
+  }
+
+  private func mergedCandidates() -> [Ranker.Entry] {
+    if let mergedEntries { return mergedEntries }
     var candidates: [String: Candidate] = [:]
     for item in libraryCandidates + index + spotlightCandidates {
       if case .file = item.payload, let opened = library.snapshot.records[item.id]?.lastOpened,
@@ -566,20 +651,42 @@ final class InternModel: ObservableObject {
         kind: candidate.kind, keywords: candidate.keywords,
         payload: .group(members.map { candidates[$0.id] ?? $0 }))
     }.sorted { $0.id < $1.id }
+    var retained: [DocumentKey: Fuzzy.Document] = [:]
+    retained.reserveCapacity(all.count)
+    let entries = all.map { candidate in
+      let key = DocumentKey(candidate)
+      let document = documents[key] ?? Fuzzy.Document(candidate)
+      retained[key] = document
+      return Ranker.Entry(candidate: candidate, document: document)
+    }
+    documents = retained
+    mergedEntries = entries
+    return entries
+  }
+
+  private func refreshResults() {
+    if let reviewedGroup {
+      prefiltered = Ranker.Prefiltered(
+        candidates: reviewedGroup,
+        fuzzy: Dictionary(uniqueKeysWithValues: reviewedGroup.map { ($0.id, 1) }))
+      updateHits()
+      return
+    }
+    let entries = mergedCandidates()
     if isEmptyQuery {
-      hits = library.home(candidates: all, scope: scope)
+      hits = library.home(candidates: entries.map(\.candidate), scope: scope)
       selection =
         manuallySelectedID.flatMap { id in hits.firstIndex { $0.id == id } }
         ?? min(selection, max(0, hits.count - 1))
       return
     }
     prefiltered = Ranker.prefilter(
-      query: query, index: all, scope: scope, boosts: library.boosts(query: query))
+      query: query, entries: entries, scope: scope, boosts: library.boosts(query: query))
     updateHits()
   }
 
   private func updateHits() {
-    var ranked = Ranker.rank(prefiltered, judgment: judgment)
+    var ranked = Ranker.rank(prefiltered, judgment: judgment, fresh: judgmentIsFresh)
     if let memberSelection {
       ranked.removeAll { $0.id == Ranker.groupID }
       let visible = Set(ranked.map(\.id))
@@ -609,30 +716,45 @@ final class InternModel: ObservableObject {
   }
 
   private func requestJudgment() {
+    judgmentTask?.cancel()
+    judgmentTask = nil
+    let signature = RequestSignature(
+      query: effectiveQuery, candidateIDs: prefiltered.candidates.map(\.id))
+    if !isEmptyQuery, reviewedGroup == nil, judgment != nil, judgedQuery == signature.query,
+      lastRequest == signature
+    {
+      // The same question is already answered; typing a trailing space changes nothing.
+      if !judgmentIsFresh {
+        judgmentIsFresh = true
+        updateHits()
+      }
+      return
+    }
+    if inFlight > 0, lastRequest == signature { return }
     sequence += 1
     let seq = sequence
     requestTask?.cancel()
     inFlight = 0
-    judgment = nil
-    judgmentIsFresh = false
-    if !isEmptyQuery { updateHits() }
     guard !isEmptyQuery, reviewedGroup == nil, !prefiltered.candidates.isEmpty, !isLocalOnly,
       Date() >= retryAfter
     else {
-      if !isLocalOnly, Date() < retryAfter {
-        lastError = "Online ranking is busy. Using local search until the cooldown ends."
-      }
+      if !isEmptyQuery, !isLocalOnly, Date() < retryAfter { lastError = Self.cooldownMessage }
       return
     }
     guard query.utf8.count <= JevQuestions.maxQueryBytes else {
-      lastError = "Query is too long for online ranking. Local results are available."
+      lastError = Self.oversizedQueryMessage
       return
     }
     let request = JevQuestions.buildRequest(
       query: query, context: context, candidates: prefiltered.candidates, window: prefiltered.window
     )
     let sent = prefiltered
+    lastRequest = signature
     inFlight = 1
+    if judgment != nil, judgmentIsFresh {
+      judgmentIsFresh = false
+      updateHits()
+    }
     requestTask = Task { [weak self, ask] in
       guard !Task.isCancelled else { return }
       guard self?.isLocalOnly == false else {
@@ -658,6 +780,7 @@ final class InternModel: ObservableObject {
           return
         }
         self.judgment = parsed
+        self.judgedQuery = signature.query
         self.backoff = 0
         self.judgmentIsFresh = true
         self.lastError = nil
@@ -666,7 +789,6 @@ final class InternModel: ObservableObject {
         guard let self, seq == self.sequence, !Task.isCancelled else { return }
         self.inFlight = 0
         self.stats.recordFailure()
-        self.judgment = nil
         self.judgmentIsFresh = false
         if case JevClient.Failure.rateLimited(let delay) = error {
           self.backoff = max(delay, min(60, max(15, self.backoff * 2)))
@@ -695,8 +817,7 @@ final class InternModel: ObservableObject {
     if let failure = error as? JevClient.Failure {
       switch failure {
       case .missingAPIKey: return Self.missingAPIKeyMessage
-      case .rateLimited:
-        return "Online ranking is busy. Using local search until the cooldown ends."
+      case .rateLimited: return Self.cooldownMessage
       case .http(let code): return "Ranking service returned HTTP \(code). Using local search."
       case .transport: return "Online ranking is unavailable. Using local search."
       }

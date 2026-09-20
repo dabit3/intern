@@ -75,11 +75,34 @@ enum Ranker {
     }
   }
 
+  /// A candidate with its searchable text tokenized once, so each keystroke only compares.
+  struct Entry: Sendable {
+    let candidate: Candidate
+    let document: Fuzzy.Document
+
+    init(_ candidate: Candidate) {
+      self.candidate = candidate
+      document = Fuzzy.Document(candidate)
+    }
+
+    init(candidate: Candidate, document: Fuzzy.Document) {
+      self.candidate = candidate
+      self.document = document
+    }
+  }
+
+  static func prefilter(
+    query: String, index: [Candidate], now: Date = Date(), scope: SearchScope = .all,
+    boosts: [String: Double] = [:]
+  ) -> Prefiltered {
+    prefilter(query: query, entries: index.map(Entry.init), now: now, scope: scope, boosts: boosts)
+  }
+
   /// Fuzzy-scores the whole index and keeps the top-k, then appends synthetic candidates
   /// (a calculation when the query parses, and a web search for any non-empty query).
   /// A time window in the query is applied here, in code: items outside it are never sent.
   static func prefilter(
-    query: String, index: [Candidate], now: Date = Date(), scope: SearchScope = .all,
+    query: String, entries: [Entry], now: Date = Date(), scope: SearchScope = .all,
     boosts: [String: Double] = [:]
   ) -> Prefiltered {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -99,12 +122,17 @@ enum Ranker {
     let wantsLinks = !wantsFiles && !wordSet.isDisjoint(with: linkWords)
     let hasRecency = window != nil || !wordSet.isDisjoint(with: recencyWords)
     let structured = wantsFiles || wantsLinks || hasRecency
-    let descriptiveWords =
+    var descriptiveWords =
       structured
       ? words.filter {
         !Fuzzy.stopwords.contains($0) && !typeWords.contains($0)
           && !recencyWords.contains($0) && !fileWords.contains($0) && !linkWords.contains($0)
       } : words
+    if structured, let last = descriptiveWords.last, last == words.last,
+      Fuzzy.isStopwordPrefix(last)
+    {
+      descriptiveWords.removeLast()
+    }
     let prepared = Fuzzy.Query(descriptiveWords.joined(separator: " "))
     // "everything from the past hour": nothing describable is left once stopwords go.
     let windowOnly =
@@ -114,9 +142,10 @@ enum Ranker {
 
     var scored: [(candidate: Candidate, score: Double, age: Double)] = []
     let recency = FileRecency(query: trimmed)
-    scored.reserveCapacity(index.count)
-    for candidate in index where scope.includes(candidate) {
-      let lexical = Fuzzy.score(query: prepared, candidate: candidate, exactQuery: fullQuery)
+    scored.reserveCapacity(min(entries.count, 256))
+    for entry in entries where scope.includes(entry.candidate) {
+      let candidate = entry.candidate
+      let lexical = Fuzzy.score(query: prepared, document: entry.document, exactQuery: fullQuery)
       if lexical < 1 {
         if wantsFiles, !SearchScope.files.includes(candidate) { continue }
         if wantsLinks, !SearchScope.links.includes(candidate) { continue }
@@ -232,19 +261,27 @@ enum Ranker {
   static let fuzzyWeight = 0.15
   /// Set members rise with the strength of the "all of them" reading so they sit together.
   static let setMemberWeight = 0.25
+  /// A judgment for an earlier draft of the query keeps this share of its influence.
+  static let staleWeight = 0.5
+  /// Typing an item's exact name is definitive; no online reading demotes it below this.
+  static let exactNameFloor = 0.9
 
   /// Merges fuzzy scores with Jev's judgment. With no judgment the order is pure fuzzy.
   /// When Jev finds several rows that fit the description, a group row is added: on top when
   /// Jev reads the query as "all of them", just below the single best hit when it could go
-  /// either way, and not at all when the query is clearly about one item.
-  static func rank(_ prefiltered: Prefiltered, judgment: JevJudgment?) -> [RankedHit] {
-    let members = setMembers(prefiltered, judgment: judgment)
+  /// either way, and not at all when the query is clearly about one item. A stale judgment
+  /// (for a prefix of the current query) only nudges the order and never offers a group.
+  static func rank(_ prefiltered: Prefiltered, judgment: JevJudgment?, fresh: Bool = true)
+    -> [RankedHit]
+  {
+    let members = fresh ? setMembers(prefiltered, judgment: judgment) : []
     let candidates = uniqueCandidates(prefiltered.candidates)
     let positions = Dictionary(
       uniqueKeysWithValues: candidates.enumerated().map { ($0.element.id, $0.offset) })
     let probabilities = judgment?.targetProbabilities.values.sorted(by: >) ?? []
     let lead = (probabilities.first ?? 0) - (probabilities.dropFirst().first ?? 0)
-    let onlineWeight = min(1, 2 * max(judgment?.targetConfidence ?? 0, lead))
+    let onlineWeight =
+      min(1, 2 * max(judgment?.targetConfidence ?? 0, lead)) * (fresh ? 1 : staleWeight)
     var hits = candidates.map { candidate -> RankedHit in
       let fuzzy = prefiltered.fuzzy[candidate.id] ?? 0
       guard let judgment else {
@@ -260,6 +297,9 @@ enum Ranker {
         onlineWeight * (targetWeight * target + actionWeight * action)
         + (1 - onlineWeight * (1 - fuzzyWeight)) * fuzzy
       if inSet { score += setMemberWeight * judgment.setProbability * (match ?? 0) }
+      if fuzzy == 1, candidate.isOpenable || candidate.kind == .systemToggle {
+        score = max(score, exactNameFloor)
+      }
       return RankedHit(
         candidate: candidate, fuzzy: fuzzy, jevProbability: target, matchProbability: match,
         inSet: inSet, score: score)

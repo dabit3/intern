@@ -54,6 +54,8 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   private var subscriptions: Set<AnyCancellable> = []
   private var previewWindow: NSWindow?
   private var isHiding = false
+  private var pendingShrink: Task<Void, Never>?
+  static let shrinkDelay: Duration = .milliseconds(120)
   var terminate: () -> Void = { NSApplication.shared.terminate(nil) }
 
   init(model: InternModel) {
@@ -94,8 +96,24 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
       .store(in: &subscriptions)
   }
 
-  /// Keeps the top edge pinned so the query field never jumps while the list changes size.
+  /// Growth is immediate; shrinking waits briefly so a list that empties and refills between two
+  /// keystrokes does not bounce the panel. Growing again cancels a pending shrink.
   private func resize(to height: CGFloat) {
+    pendingShrink?.cancel()
+    pendingShrink = nil
+    guard panel.isVisible else { return }
+    if height < panel.frame.height {
+      pendingShrink = Task { [weak self] in
+        try? await Task.sleep(for: Self.shrinkDelay)
+        guard let self, !Task.isCancelled, Self.height(for: self.model) == height else { return }
+        self.applyHeight(height)
+      }
+      return
+    }
+    applyHeight(height)
+  }
+
+  private func applyHeight(_ height: CGFloat) {
     guard panel.isVisible else { return }
     var frame = panel.frame
     frame.origin.y += frame.height - height
@@ -134,6 +152,8 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   func hide() {
     guard !isHiding else { return }
     isHiding = true
+    pendingShrink?.cancel()
+    pendingShrink = nil
     removeKeyMonitor()
     let preview = previewWindow
     previewWindow = nil

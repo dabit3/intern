@@ -270,6 +270,7 @@ struct InternView: View {
           }
           .padding(.horizontal, 8)
           .padding(.vertical, 6)
+          .animation(.easeOut(duration: 0.18), value: model.hits.map(\.id))
         }
         .onChange(of: model.selection) { _, selection in
           if model.hits.indices.contains(selection) {
