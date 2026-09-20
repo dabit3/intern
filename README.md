@@ -12,7 +12,7 @@ Intern searches your files and Chrome history locally, then [Jev](https://docs.t
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
-## What only Intern does
+## What Intern does
 
 - Describe a file instead of naming it.
 - `the pdf I just downloaded` opens the newest arrival.
