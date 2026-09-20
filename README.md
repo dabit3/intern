@@ -34,7 +34,7 @@ You can also do the usual launcher things: open apps and files, toggle dark mode
 
 A launcher is judged per keystroke. Previous single-target runs measured about 100 ms per Jev round trip from this VM. Local results appear immediately; Jev refines them when its answer arrives. Superseded requests are canceled, old responses are rejected, and manually selected rows stay selected when ranking changes. Spotlight searches in parallel and can trigger a fresh judgment when it finds more candidates.
 
-## What it does
+## How it works
 
 ### Find files by what happened
 
