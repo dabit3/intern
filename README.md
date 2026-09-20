@@ -281,7 +281,7 @@ For public distribution, use a Developer ID Application certificate and a `notar
 ```sh
 SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 NOTARY_PROFILE="your-profile" \
-RELEASE_VERSION=0.2.1 RELEASE_BUILD=7 \
+RELEASE_VERSION=0.2.2 RELEASE_BUILD=8 \
   ./scripts/make-dmg.sh
 
 REQUIRE_NOTARIZATION=1 sh scripts/verify-dmg.sh Intern.dmg
