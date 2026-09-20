@@ -86,6 +86,27 @@ final class InteractionQualityTests: XCTestCase {
     XCTAssertEqual(model.query, "roadmap")
   }
 
+  func testQuickLookAcceptsKeyboardWithoutActivatingTheLauncherApplication() async throws {
+    let model = try makeModel()
+    let controller = InternPanelIntern(model: model)
+    controller.show()
+    defer { controller.hide() }
+    await settle()
+    model.query = "roadmap"
+    model.previewSelection()
+    await settle()
+
+    let preview = try XCTUnwrap(
+      NSApp.windows.first { $0.title == Fixtures.roadmap.title } as? PreviewPanel)
+    XCTAssertTrue(preview.styleMask.contains(.nonactivatingPanel))
+    XCTAssertTrue(preview.canBecomeKey)
+    XCTAssertFalse(preview.becomesKeyOnlyIfNeeded)
+    XCTAssertFalse(preview.hidesOnDeactivate)
+    XCTAssertNil(controller.handleKeyEvent(try key(53, in: preview)))
+    XCTAssertFalse(preview.isVisible)
+    XCTAssertEqual(model.query, "roadmap")
+  }
+
   func testModifiersAndMarkedTextAreLeftToTheFieldEditor() async throws {
     let model = try makeModel()
     let controller = InternPanelIntern(model: model)

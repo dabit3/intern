@@ -472,6 +472,29 @@ final class StateQualityTests: XCTestCase {
 
 @MainActor
 final class PersistenceQualityTests: XCTestCase {
+  func testFileRefreshPreservesKnownOpenDatesWithoutQueryingSpotlight() throws {
+    let suite = "PersistenceQualityTests.\(UUID())"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+      "PersistenceQuality-\(UUID()).txt")
+    try Data("fixture".utf8).write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let opened = Date()
+    let candidate = Candidate(
+      id: "file:\(url.path)", title: url.lastPathComponent, subtitle: "", kind: .openFile,
+      payload: .file(url), lastOpenedAt: opened)
+    let library = PersonalLibrary(defaults: defaults)
+    library.togglePin(candidate)
+
+    let restored = PersonalLibrary(defaults: defaults)
+    let fresh = try XCTUnwrap(restored.candidates().first)
+    XCTAssertEqual(fresh.lastOpenedAt, opened)
+    XCTAssertNotNil(fresh.modifiedAt)
+    XCTAssertTrue(restored.isPinned(fresh))
+    XCTAssertEqual(fresh.fileURL, url)
+  }
+
   func testCorruptEntriesAreDroppedWithoutDiscardingValidState() throws {
     let suite = "PersistenceQualityTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

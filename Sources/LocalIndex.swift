@@ -198,7 +198,8 @@ struct LocalIndex: Sendable {
   }
 
   static func fileCandidate(
-    url: URL, folder: String, now: Date, metadata: NSMetadataItem? = nil
+    url: URL, folder: String, now: Date, metadata: NSMetadataItem? = nil,
+    readSpotlightMetadata: Bool = true
   ) -> Candidate {
     let url = url.standardizedFileURL
     let values = try? url.resourceValues(forKeys: [
@@ -206,7 +207,7 @@ struct LocalIndex: Sendable {
     ])
     let isDirectory = values?.isDirectory ?? false
     let modified = values?.contentModificationDate
-    let item = metadata ?? NSMetadataItem(url: url)
+    let item = metadata ?? (readSpotlightMetadata ? NSMetadataItem(url: url) : nil)
     let lastOpened = item?.value(forAttribute: "kMDItemLastUsedDate") as? Date
     let added =
       item?.value(forAttribute: "kMDItemDateAdded") as? Date ?? values?.addedToDirectoryDate

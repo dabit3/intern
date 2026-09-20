@@ -141,21 +141,22 @@ final class PersonalLibrary: ObservableObject {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         if record.candidate.kind == .openFile {
           let fresh = LocalIndex.fileCandidate(
-            url: url, folder: url.deletingLastPathComponent().lastPathComponent, now: now)
-          let opened = [fresh.lastOpenedAt, record.lastOpened].compactMap { $0 }.max()
+            url: url, folder: url.deletingLastPathComponent().lastPathComponent, now: now,
+            readSpotlightMetadata: false)
+          let opened = [record.candidate.lastOpenedAt, record.lastOpened].compactMap { $0 }.max()
           var detail = fresh.subtitle
-          if let date = record.lastOpened, date > (fresh.lastOpenedAt ?? .distantPast) {
+          if let date = opened {
             detail +=
               " · "
               + LocalIndex.recency(max(0, now.timeIntervalSince(date)) / 86_400)
-              .replacingOccurrences(of: "modified", with: "opened in launcher")
+              .replacingOccurrences(of: "modified", with: "opened")
           }
           return Candidate(
             id: fresh.id, title: fresh.title, subtitle: detail, kind: fresh.kind,
             keywords: fresh.keywords, payload: fresh.payload, ageDays: fresh.ageDays,
             modifiedAt: fresh.modifiedAt,
             lastOpenedAt: opened,
-            addedAt: fresh.addedAt)
+            addedAt: fresh.addedAt ?? record.candidate.addedAt)
         }
       }
       return Self.withoutHistoricalAge(record.candidate)

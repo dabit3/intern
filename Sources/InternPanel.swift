@@ -9,6 +9,11 @@ final class KeyablePanel: NSPanel {
   override var canBecomeMain: Bool { false }
 }
 
+final class PreviewPanel: NSPanel {
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { false }
+}
+
 /// A floating, non-activating panel that sits above every window and every Space, like Spotlight.
 @MainActor
 final class InternPanelIntern: NSObject, NSWindowDelegate {
@@ -156,10 +161,14 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   }
 
   private func preview(_ url: URL) {
-    let window = NSWindow(
+    let window = PreviewPanel(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 560),
-      styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+      styleMask: [.titled, .closable, .resizable, .nonactivatingPanel], backing: .buffered,
+      defer: false)
     window.isReleasedWhenClosed = false
+    window.hidesOnDeactivate = false
+    window.becomesKeyOnlyIfNeeded = false
+    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     window.delegate = self
     window.level = .floating
     window.title = url.lastPathComponent
@@ -171,7 +180,6 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     let previous = previewWindow
     previewWindow = window
     previous?.close()
-    NSApplication.shared.activate()
     window.makeKeyAndOrderFront(nil)
   }
 
