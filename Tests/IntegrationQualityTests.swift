@@ -52,4 +52,17 @@ final class IntegrationQualityTests: XCTestCase {
     XCTAssertEqual(request.state.candidates.first?.recency?.secondsAgo, 3_600)
     XCTAssertEqual(request.state.candidates.first?.recency?.basis, "visited")
   }
+
+  func testIndexedHistoryExpiresFromRelativeWindows() {
+    let now = Date(timeIntervalSince1970: 1_790_000_000)
+    let entry = ChromeHistory.Entry(
+      url: URL(string: "https://example.com")!, title: "Research article",
+      lastVisit: now.addingTimeInterval(-120), visitCount: 1)
+    let candidate = ChromeHistory.candidate(for: entry, now: now)
+    XCTAssertEqual(candidate.visitedAt, entry.lastVisit)
+    let later = now.addingTimeInterval(2 * 86_400)
+    XCTAssertFalse(
+      Ranker.prefilter(query: "links visited in the last hour", index: [candidate], now: later)
+        .candidates.contains { $0.id == candidate.id })
+  }
 }

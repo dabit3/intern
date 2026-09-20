@@ -100,6 +100,20 @@ final class IndexingQualityTests: XCTestCase {
     XCTAssertFalse(candidates.contains { $0.title == "Example.app" })
   }
 
+  func testHomeFoldersRemainDirectlySearchable() throws {
+    for name in LocalIndex.fileDirectories {
+      try manager.createDirectory(
+        at: home.appendingPathComponent(name), withIntermediateDirectories: true)
+    }
+    _ = try file("Downloads/report.pdf")
+    let candidates = LocalIndex.scanFiles(fileManager: manager, now: now)
+    for name in LocalIndex.fileDirectories {
+      let results = Ranker.rank(
+        Ranker.prefilter(query: "open \(name)", index: candidates), judgment: nil)
+      XCTAssertEqual(results.first?.candidate.fileURL, home.appendingPathComponent(name))
+    }
+  }
+
   func testSymlinkDoesNotExposeLibraryContents() throws {
     let secret = try file("Library/Private/secret.pdf")
     try manager.createDirectory(
@@ -231,7 +245,9 @@ final class IndexingQualityTests: XCTestCase {
     let browserCandidate = try XCTUnwrap(apps.first { $0.title == "Aurora" })
     let editorCandidate = try XCTUnwrap(apps.first { $0.title == "Studio" })
     XCTAssertTrue(browserCandidate.keywords.contains("browser"))
-    XCTAssertGreaterThan(Fuzzy.score(query: "browser", candidate: browserCandidate), 0.9)
+    XCTAssertEqual(
+      Ranker.rank(Ranker.prefilter(query: "browser", index: apps), judgment: nil).first?.id,
+      browserCandidate.id)
     XCTAssertTrue(editorCandidate.keywords.contains("code"))
     XCTAssertTrue(editorCandidate.keywords.contains("editor"))
     XCTAssertFalse(browserCandidate.keywords.contains("editor"))

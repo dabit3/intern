@@ -166,6 +166,12 @@ struct LocalIndex: Sendable {
     for folder in fileDirectories {
       guard !Task.isCancelled else { break }
       let root = home.appendingPathComponent(folder)
+      if let values = try? root.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+        values.isDirectory == true, values.isSymbolicLink != true
+      {
+        let candidate = fileCandidate(url: root, folder: folder, now: now)
+        if seen.insert(candidate.id).inserted { files.append(candidate) }
+      }
       let urls = scanURLs(root: root, fileManager: fileManager, appsOnly: false)
       guard !Task.isCancelled else { break }
       var candidates: [Candidate] = []
