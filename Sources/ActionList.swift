@@ -39,7 +39,7 @@ enum InternAction: String, Identifiable {
     case .reveal: return "⌘R"
     case .copy: return "⇧⌘C"
     case .pin: return "⌘P"
-    case .member: return "⌘Space"
+    case .member: return "⇧⌘Space"
     case .reviewGroup, .saveWorkspace, .deleteWorkspace: return ""
     }
   }

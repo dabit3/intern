@@ -178,6 +178,29 @@ final class InteractionQualityTests: XCTestCase {
     editor.unmarkText()
   }
 
+  func testGroupShortcutsToggleSelectedMemberOncePerPress() async throws {
+    let model = try makeModel()
+    let controller = InternPanelIntern(model: model)
+    controller.show()
+    defer { controller.hide() }
+    await settle()
+    model.query = "roadmap"
+    model.select(0)
+    let panel = try launcherWindow()
+
+    for modifiers: NSEvent.ModifierFlags in [[.command, .shift], .command] {
+      XCTAssertNil(controller.handleKeyEvent(try key(49, in: panel, modifiers: modifiers)))
+      XCTAssertEqual(model.selectedMembers.map(\.id), [Fixtures.roadmap.id])
+      XCTAssertEqual(model.topHit?.id, Fixtures.roadmap.id)
+      XCTAssertNil(
+        controller.handleKeyEvent(try key(49, in: panel, modifiers: modifiers, repeated: true)))
+      XCTAssertEqual(model.selectedMembers.map(\.id), [Fixtures.roadmap.id])
+      XCTAssertNil(controller.handleKeyEvent(try key(49, in: panel, modifiers: modifiers)))
+      XCTAssertTrue(model.selectedMembers.isEmpty)
+    }
+    XCTAssertEqual(model.query, "roadmap")
+  }
+
   func testConfirmationPrecedesActionsAndReturnRepeatCannotExecute() async throws {
     var executions = 0
     let model = try makeModel { _ in

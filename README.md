@@ -75,7 +75,7 @@ Press **⌘K** for the selected result's actions. Arrow keys select an action an
 
 ### Save a workflow
 
-Check or uncheck members of a suggested group, or build a group yourself with **⌘Space** on individual results. **Save group as workspace** gives it a name, such as `Writing` or `Launch research`. That name becomes a searchable result containing 2 to 25 apps, files or links. Open its Actions menu and choose **Review and edit items** to adjust the group before opening it or saving a new workspace. Workspaces are local, capped at 20, and removable from their Actions menu.
+Check or uncheck members of a suggested group, or build a group yourself with **⇧⌘Space** on individual results. **Save group as workspace** gives it a name, such as `Writing` or `Launch research`. That name becomes a searchable result containing 2 to 25 apps, files or links. Open its Actions menu and choose **Review and edit items** to adjust the group before opening it or saving a new workspace. Workspaces are local, capped at 20, and removable from their Actions menu.
 
 Only openable items can belong to groups. System commands and shortcuts cannot be bundled into a workspace. Empty Trash requires a separate confirmation after selection.
 
@@ -222,10 +222,10 @@ Debug builds appear as `Intern Dev` in macOS permission prompts and use separate
 | ⌘R | Reveal the selected app or file in Finder |
 | ⇧⌘C | Copy path, link, result or group values |
 | ⌘P | Pin or unpin |
-| ⌘Space | Include or exclude the selected item in a group |
+| ⇧⌘Space | Include or exclude the selected item in a group |
 | Tab / Shift-Tab | Next / previous scope |
 
-`⌘Space` is commonly assigned to macOS Spotlight. If macOS intercepts it, use the member checkbox or the Actions menu instead.
+The older `⌘Space` group shortcut remains available when it is not assigned to macOS Spotlight. Use `⇧⌘Space`, the member checkbox or the Actions menu with the default macOS shortcuts.
 
 ### Privacy and failure behavior
 

@@ -115,7 +115,7 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 
 1. Search for a set of recent files or links. A clear set intent should offer an `Open all` row, with individual results still selectable.
 2. Uncheck a member while a judgment is in flight. It must remain excluded when the reply arrives.
-3. Build a manual group using member actions or checkboxes. ⌘Space is also available when the system Spotlight shortcut does not intercept it.
+3. Build a manual group with ⇧⌘Space on individual results. Confirm a second press excludes the same item and holding the chord does not repeat the toggle. Member actions and checkboxes also work; the older ⌘Space shortcut remains available when the system Spotlight shortcut does not intercept it.
 4. Save two or more members as `Research`. Search that name in Workspaces, restart the app, and search again.
 5. Open the workspace's Actions menu → Review and edit items. Remove one member and check that the group count and primary action reflect the edited selection. Save as a new workspace if desired.
 6. Enter on a member opens one item; Enter on the group opens its selected members. Nothing opens from a Jev response alone.

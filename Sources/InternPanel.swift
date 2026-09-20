@@ -240,7 +240,7 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
       case (16, .command): action = .preview
       case (15, .command): action = .reveal
       case (8, [.command, .shift]): action = .copy
-      case (49, .command): action = .member
+      case (49, [.command, .shift]), (49, .command): action = .member
       default: return event
       }
       if !event.isARepeat, let action, model.availableActions.contains(action) {
