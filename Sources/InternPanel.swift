@@ -19,6 +19,7 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   static let footerHeight: CGFloat = 40
   static let maxRows = 7
   static let emptyHeight: CGFloat = 96
+  static let feedbackHeight: CGFloat = 32
 
   /// The panel grows and shrinks with its content, like Spotlight, instead of sitting in a fixed box.
   static func height(rows: Int, empty: Bool) -> CGFloat {
@@ -26,11 +27,28 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     return headerHeight + scopeHeight + body + footerHeight
   }
 
+  static func height(for model: InternModel) -> CGFloat {
+    let overlay = model.confirmation != nil || model.savingWorkspace
+    let rows = overlay ? 3 : model.actionsVisible ? 6 : model.hits.count
+    return height(rows: rows, empty: !overlay && !model.actionsVisible && model.hits.isEmpty)
+      + (model.lastError != nil || model.status != nil || model.isExecuting ? feedbackHeight : 0)
+  }
+
+  static func fitting(_ frame: NSRect, in screen: NSRect) -> NSRect {
+    var fitted = frame
+    fitted.size.height = min(frame.height, screen.height)
+    fitted.size.width = min(frame.width, screen.width)
+    fitted.origin.x = min(max(frame.minX, screen.minX), screen.maxX - fitted.width)
+    fitted.origin.y = min(max(frame.minY, screen.minY), screen.maxY - fitted.height)
+    return fitted
+  }
+
   let model: InternModel
   private let panel: KeyablePanel
-  private var keyMonitor: Any?
+  private var keyMonitor: AnyCancellable?
   private var subscriptions: Set<AnyCancellable> = []
   private var previewWindow: NSWindow?
+  private var isHiding = false
 
   init(model: InternModel) {
     self.model = model
@@ -59,11 +77,7 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
       .receive(on: RunLoop.main)
       .map { [weak model] _ in
         guard let model else { return Self.height(rows: 0, empty: true) }
-        return Self.height(
-          rows: model.actionsVisible
-            ? 6
-            : model.savingWorkspace || model.confirmation != nil ? 3 : model.hits.count,
-          empty: model.hits.isEmpty && !model.actionsVisible && model.confirmation == nil)
+        return Self.height(for: model)
       }
       .removeDuplicates()
       .sink { [weak self] height in self?.resize(to: height) }
@@ -76,6 +90,7 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     var frame = panel.frame
     frame.origin.y += frame.height - height
     frame.size.height = height
+    if let screen = panel.screen { frame = Self.fitting(frame, in: screen.visibleFrame) }
     NSAnimationContext.runAnimationGroup { context in
       context.duration = 0.16
       context.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -93,12 +108,13 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     model.panelWillShow()
     if let screen = NSScreen.main {
       let frame = screen.visibleFrame
-      let height = Self.height(rows: model.hits.count, empty: model.hits.isEmpty)
+      let height = Self.height(for: model)
       let top = frame.midY + frame.height * 0.22
       panel.setFrame(
-        NSRect(
-          x: frame.midX - Self.panelWidth / 2, y: top - height, width: Self.panelWidth,
-          height: height),
+        Self.fitting(
+          NSRect(
+            x: frame.midX - Self.panelWidth / 2, y: top - height, width: Self.panelWidth,
+            height: height), in: frame),
         display: false)
     }
     panel.makeKeyAndOrderFront(nil)
@@ -106,14 +122,37 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   }
 
   func hide() {
-    panel.orderOut(nil)
+    guard !isHiding else { return }
+    isHiding = true
     removeKeyMonitor()
+    let preview = previewWindow
+    previewWindow = nil
+    preview?.close()
+    panel.orderOut(nil)
     model.reset()
+    isHiding = false
   }
 
   func windowDidResignKey(_ notification: Notification) {
-    guard !model.isExecuting else { return }
-    hide()
+    guard !isHiding, !model.isExecuting, let window = notification.object as? NSWindow else {
+      return
+    }
+    if window === previewWindow {
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let preview = self.previewWindow,
+          !self.panel.isKeyWindow, !preview.isKeyWindow, !self.model.isExecuting
+        else { return }
+        self.hide()
+      }
+    } else if window === panel, previewWindow == nil {
+      hide()
+    }
+  }
+
+  func windowWillClose(_ notification: Notification) {
+    guard let window = notification.object as? NSWindow, window === previewWindow else { return }
+    previewWindow = nil
+    if !isHiding, panel.isVisible { panel.makeKeyAndOrderFront(nil) }
   }
 
   private func preview(_ url: URL) {
@@ -121,76 +160,102 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 560),
       styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
+    window.delegate = self
+    window.level = .floating
     window.title = url.lastPathComponent
     let preview = QLPreviewView(frame: window.contentView?.bounds ?? .zero, style: .normal)!
     preview.autoresizingMask = [.width, .height]
     preview.previewItem = url as NSURL
     window.contentView = preview
     window.center()
-    previewWindow?.close()
+    let previous = previewWindow
     previewWindow = window
+    previous?.close()
     NSApplication.shared.activate()
     window.makeKeyAndOrderFront(nil)
   }
 
   private func installKeyMonitor() {
     removeKeyMonitor()
-    keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-      guard let self, self.panel.isVisible else { return event }
-      let command = event.modifierFlags.contains(.command)
-      if command && !self.model.savingWorkspace {
-        switch event.keyCode {
-        case 40: self.model.actionsVisible.toggle()
-        case 35: self.model.togglePin()
-        case 16: self.model.previewSelection()
-        case 15: self.model.revealSelection()
-        case 8 where event.modifierFlags.contains(.shift): self.model.copySelection()
-        case 49:
-          if let candidate = self.model.topHit?.candidate { self.model.toggleMember(candidate) }
-        default: return event
-        }
-        return nil
-      }
-      switch event.keyCode {
-      case 53:  // Escape
-        if !self.model.cancelOverlay() { self.hide() }
-        return nil
-      case 48 where !self.model.actionsVisible && !self.model.savingWorkspace:
-        self.model.cycleScope(backward: event.modifierFlags.contains(.shift))
-        return nil
-      case 125:  // Down
-        if self.model.savingWorkspace { return event }
-        if self.model.actionsVisible {
-          self.model.moveActionSelection(by: 1)
-        } else {
-          self.model.moveSelection(by: 1)
-        }
-        return nil
-      case 126:  // Up
-        if self.model.savingWorkspace { return event }
-        if self.model.actionsVisible {
-          self.model.moveActionSelection(by: -1)
-        } else {
-          self.model.moveSelection(by: -1)
-        }
-        return nil
-      case 36, 76:  // Return, keypad Enter
-        if self.model.savingWorkspace {
-          self.model.saveWorkspace()
-        } else if self.model.actionsVisible {
-          self.model.performSelectedAction()
-        } else {
-          self.model.executeSelection()
-        }
-        return nil
-      default:
-        return event
-      }
+    let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+      guard let self else { return event }
+      return self.handleKeyEvent(event)
     }
+    if let monitor { keyMonitor = AnyCancellable { NSEvent.removeMonitor(monitor) } }
+  }
+
+  func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+    guard panel.isVisible, let window = event.window else { return event }
+    let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+    if window === previewWindow {
+      if (event.keyCode == 53 && modifiers.isEmpty)
+        || (event.keyCode == 13 && modifiers == .command)
+      {
+        if !event.isARepeat { previewWindow?.close() }
+        return nil
+      }
+      return event
+    }
+    guard window === panel else { return event }
+    if let input = panel.firstResponder as? NSTextInputClient, input.hasMarkedText() {
+      return event
+    }
+    if modifiers.isEmpty, event.keyCode == 53 {
+      if !event.isARepeat, !model.cancelOverlay() { hide() }
+      return nil
+    }
+    if modifiers.isEmpty, event.keyCode == 36 || event.keyCode == 76 {
+      guard !event.isARepeat else { return nil }
+      if model.confirmation != nil {
+        model.executeSelection()
+      } else if model.savingWorkspace {
+        model.saveWorkspace()
+      } else if model.actionsVisible {
+        model.performSelectedAction()
+      } else {
+        model.executeSelection()
+      }
+      return nil
+    }
+    guard !model.savingWorkspace, model.confirmation == nil else { return event }
+    if modifiers == .command || modifiers == [.command, .shift] {
+      let action: InternAction?
+      switch (event.keyCode, modifiers) {
+      case (40, .command):
+        if !event.isARepeat, model.topHit != nil { model.actionsVisible.toggle() }
+        return nil
+      case (35, .command): action = .pin
+      case (16, .command): action = .preview
+      case (15, .command): action = .reveal
+      case (8, [.command, .shift]): action = .copy
+      case (49, .command): action = .member
+      default: return event
+      }
+      if !event.isARepeat, let action, model.availableActions.contains(action) {
+        model.performAction(action)
+      }
+      return nil
+    }
+    if event.keyCode == 48, modifiers.isEmpty || modifiers == .shift,
+      !model.actionsVisible
+    {
+      if !event.isARepeat { model.cycleScope(backward: modifiers == .shift) }
+      return nil
+    }
+    if modifiers.isEmpty, event.keyCode == 125 || event.keyCode == 126 {
+      let delta = event.keyCode == 125 ? 1 : -1
+      if model.actionsVisible {
+        model.moveActionSelection(by: delta)
+      } else {
+        model.moveSelection(by: delta)
+      }
+      return nil
+    }
+    return event
   }
 
   private func removeKeyMonitor() {
-    if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+    keyMonitor?.cancel()
     keyMonitor = nil
   }
 }

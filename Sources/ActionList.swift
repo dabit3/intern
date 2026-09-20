@@ -66,6 +66,7 @@ struct ActionList: View {
         .padding(18)
       }
       .onChange(of: model.actionSelection) { _, index in proxy.scrollTo(index) }
+      .onAppear { proxy.scrollTo(model.actionSelection) }
     }
   }
 
@@ -90,12 +91,14 @@ struct ActionList: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(title)
+    .accessibilityAddTraits(model.actionSelection == index ? .isSelected : [])
   }
 }
 
 struct WorkspaceEditor: View {
   @ObservedObject var model: InternModel
-  @FocusState private var focused: Bool
+  var focused: FocusState<InternFocus?>.Binding
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -104,16 +107,18 @@ struct WorkspaceEditor: View {
         .foregroundStyle(Theme.text)
       TextField("Name this workspace", text: $model.workspaceName)
         .textFieldStyle(.roundedBorder)
-        .focused($focused)
+        .focused(focused, equals: .workspace)
+        .accessibilityLabel("Workspace name")
         .onSubmit { model.saveWorkspace() }
       HStack {
         Button("Cancel") { model.savingWorkspace = false }
         Spacer()
         Button("Save workspace") { model.saveWorkspace() }
-          .disabled(model.workspaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+          .disabled(
+            model.workspaceName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              || !(2...Ranker.maximumSetSize).contains(model.selectedMembers.count))
       }
     }
     .padding(24)
-    .onAppear { focused = true }
   }
 }
