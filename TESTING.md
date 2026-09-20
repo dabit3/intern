@@ -36,8 +36,9 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `LiveExperienceTests.swift` | Live Jev judgments over fixed candidate fixtures for last-opened PDFs, named workspaces and recently used file groups |
 | `LiveJevTests.swift` | Live API against the machine's real local index and browsing fixtures |
 | `RankingQualityTests.swift` | Typos, accents, exact names, structured file constraints, direct URLs, recency ordering and calendar windows |
-| `IndexingQualityTests.swift` | Nested apps/files, bounded traversal, privacy filters, Shortcut deadlines and read-only Chrome WAL/profile fixtures |
-| `StateQualityTests.swift` | Stale executions/replies, source preferences, malformed persisted state, workspace identity and advancing visit ages |
+| `IndexingQualityTests.swift` | Nested apps/files, bounded traversal, per-folder scan caps, searchable folder names, scan reuse and history stamps, privacy filters, Shortcut deadlines and read-only Chrome WAL/profile fixtures |
+| `StateQualityTests.swift` | Stale executions/replies, judgments kept fresh or stale across index changes, source preferences, malformed persisted state, workspace identity and advancing visit ages |
+| `ResponsivenessQualityTests.swift` | Allocation-free scoring parity, filler words while typing, first-word and habit ranking, learned aliases, exact-name tier, stale-judgment damping, debounced requests, judgment continuity, readiness agreement and the on-disk index |
 | `OnlineQualityTests.swift` | Mocked transport failures, cancellation, retry bounds, malformed probability distributions and bounded request data |
 | `ExecutionQualityTests.swift` | Unicode/scientific arithmetic, invalid groups, registered-browser routing, clipboard failures and subprocess lifecycle |
 | `InteractionQualityTests.swift` | Native editor focus, Quick Look dismissal, IME/modifier routing, repeat suppression, overlay priority, panel geometry and the ⌘, / ⌘Q launcher shortcuts |
@@ -96,7 +97,7 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 ### Search and recency
 
 1. Verify ⌥Space opens a compact HUD and Escape dismisses it. The footer contains only latency and price.
-2. Search `dark`, `wifi off`, `15% of 240` and `the pdf I just downloaded`. Local rows should appear before any Jev response.
+2. Search `dark`, `wifi off`, `15% of 240` and `the pdf I just downloaded`. Local rows should appear before any Jev response. Type `the pdf I just downloaded` slowly: the list must not empty while `j`, `ju` or `jus` is the last word, and when the Jev reply lands the rows should slide rather than snap. Quit and relaunch the app, then press ⌥Space at once: results must appear immediately from the saved index while the indexing dot shows.
 3. Put a valid PDF several folders deep in a non-hidden home directory. Wait for Spotlight to index it, then find it by part of its filename and by file type.
 4. Use `mdls -name kMDItemLastUsedDate -name kMDItemDateAdded -name kMDItemFSContentChangeDate <file>` to inspect actual evidence. Test a recently opened but old-modified PDF against a recently edited but old-opened PDF. The opened query should prefer the first.
 5. A file with no last-used metadata and no launcher history should not appear as an opened-file match. Successful launcher opens should establish local evidence for subsequent queries.
@@ -125,7 +126,7 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 ### Failure and rapid-input behavior
 
 1. Type a query, move down to another result, and wait for Jev. Selection should follow the same candidate identity rather than jump to index zero.
-2. Rapidly replace queries and change scopes. Replies and Spotlight callbacks for old generations must not replace current results.
+2. Rapidly replace queries and change scopes. Replies and Spotlight callbacks for old generations must not replace current results. Typing a word quickly must produce one request (the footer's decision count grows by one), and extending a query after its reply keeps the dimmed percentages until the next reply instead of dropping to local order.
 3. Switch to local-only mode and reopen the launcher. Search, pins, preview, workspaces, arithmetic and manual groups should remain available with no Jev requests.
 4. Use an invalid API key in a separate launch or disconnect networking. Verify local results remain usable and the header warning explains the failure.
 5. With no saved key and local-only mode off, type a query. The status line should read *Add a TypeSafe key in Settings* with **Settings** underlined. Clicking it must hide the launcher and open Settings without the menu bar item; the same query must be searchable again afterward.
