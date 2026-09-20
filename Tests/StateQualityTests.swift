@@ -238,6 +238,30 @@ final class StateQualityTests: XCTestCase {
     XCTAssertNotNil(model.lastError)
   }
 
+  func testLateExecutionFailureDoesNotRefocusANewQuery() async throws {
+    let (defaults, suite) = try defaults()
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(true, forKey: "localOnly")
+    defaults.set(false, forKey: "includeSpotlight")
+    var finish: CheckedContinuation<Executor.Outcome, Never>?
+    let model = InternModel(
+      defaults: defaults,
+      execute: { _ in await withCheckedContinuation { finish = $0 } })
+    var refocused = false
+    model.onExecutionFailure = { refocused = true }
+    model.replaceIndex([Fixtures.safari, Fixtures.slack])
+    model.query = "safari"
+    model.executeSelection()
+    await waitUntil { finish != nil }
+    model.query = "slack"
+    finish?.resume(returning: .init(succeeded: false, message: "Open was rejected"))
+    await waitUntil { !model.isExecuting }
+
+    XCTAssertFalse(refocused)
+    XCTAssertNil(model.lastError)
+    XCTAssertEqual(model.query, "slack")
+  }
+
   func testFailedMissingFileExecutionClearsReadinessAndEvictsTheRow() async throws {
     let (defaults, suite) = try defaults()
     defer { defaults.removePersistentDomain(forName: suite) }

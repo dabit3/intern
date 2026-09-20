@@ -40,6 +40,7 @@ final class InternModel: ObservableObject {
 
   let library: PersonalLibrary
   var onExecute: (() -> Void)?
+  var onExecutionFailure: (() -> Void)?
   var onPreview: ((URL) -> Void)?
 
   private let defaults: UserDefaults
@@ -460,6 +461,7 @@ final class InternModel: ObservableObject {
           self.reviewedGroup?.removeAll { $0.id == candidate.id }
         }
         self.refreshResults()
+        self.onExecutionFailure?()
       }
     }
   }

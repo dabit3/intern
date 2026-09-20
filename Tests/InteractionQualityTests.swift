@@ -107,6 +107,43 @@ final class InteractionQualityTests: XCTestCase {
     XCTAssertEqual(model.query, "roadmap")
   }
 
+  func testFailedExecutionRestoresKeyboardFocusWithoutResettingSearch() async throws {
+    var finish: CheckedContinuation<Executor.Outcome, Never>?
+    let model = try makeModel { _ in
+      await withCheckedContinuation { finish = $0 }
+    }
+    let controller = InternPanelIntern(model: model)
+    controller.show()
+    defer { controller.hide() }
+    await settle()
+    let link = Candidate(
+      id: "url:focus", title: "Focus example", subtitle: "example.com", kind: .openURL,
+      payload: .url(URL(string: "https://example.com")!))
+    model.replaceIndex([link])
+    model.query = "focus"
+    let launcher = try launcherWindow()
+    model.executeSelection()
+    await settle()
+    let other = PreviewPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+      styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
+    other.isReleasedWhenClosed = false
+    defer { other.close() }
+    other.makeKeyAndOrderFront(nil)
+    await settle()
+    XCTAssertTrue(other.isKeyWindow)
+    XCTAssertFalse(launcher.isKeyWindow)
+    let completion = try XCTUnwrap(finish)
+    completion.resume(returning: .init(succeeded: false, message: "Open was rejected"))
+    await settle()
+
+    XCTAssertTrue(launcher.isKeyWindow)
+    XCTAssertTrue(controller.isVisible)
+    XCTAssertEqual(model.query, "focus")
+    XCTAssertEqual(model.topHit?.id, link.id)
+    XCTAssertEqual(model.lastError, "Open was rejected")
+  }
+
   func testModifiersAndMarkedTextAreLeftToTheFieldEditor() async throws {
     let model = try makeModel()
     let controller = InternPanelIntern(model: model)

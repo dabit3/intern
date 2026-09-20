@@ -77,6 +77,10 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     host.autoresizingMask = [.width, .height]
     panel.contentView = host
     model.onExecute = { [weak self] in self?.hide() }
+    model.onExecutionFailure = { [weak self] in
+      guard let self, self.panel.isVisible, self.previewWindow == nil else { return }
+      self.panel.makeKeyAndOrderFront(nil)
+    }
     model.onPreview = { [weak self] url in self?.preview(url) }
     model.objectWillChange
       .receive(on: RunLoop.main)
