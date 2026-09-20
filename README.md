@@ -2,11 +2,13 @@
 
 [![Built with Devin](https://img.shields.io/badge/Built%20with-Devin-1a1a1a?style=for-the-badge)](https://devin.ai)
 
-![Intern hero: the title above the panel ranking Q3-Roadmap-Review.pdf first for “the pdf I just downloaded”](docs/homepage.png)
+![Intern hero: the title above the panel ranking Q3-Roadmap-Review.pdf first for “the pdf I just downloaded”, with a Built by Devin mark](docs/homepage.png)
 
-A native macOS launcher for things you remember by meaning: `the last pdf I opened`, `files I used in the last hour`, `open the devin ambassador links I visited today`. Press ⌥Space, describe what you need, and press Enter. Local search finds candidates, [Jev](https://docs.typesafe.ai) judges your intent on each keystroke, and the selected result opens. Pin frequent items, preview files, edit a matching group, or save it as a workspace you can reopen by name.
+Intern is a native macOS app that finds things the way you remember them. Press ⌥Space, describe what you want — `the pdf I just downloaded`, `files I used in the last hour`, `the typesafe pages I read today` — and press Enter to open it.
 
-![Six Intern examples: toggling dark mode and Wi-Fi, finding a recent PDF, putting the Mac to sleep, calculating a percentage, and saving three apps as a Writing mode workspace](docs/demo.gif)
+Intern searches your files and Chrome history locally, then [Jev](https://docs.typesafe.ai) judges which candidate you mean on every keystroke, about 100 ms per round trip. When one thing clearly fits, it is selected and a green ↵ appears. When several do, Intern offers to open them all, and that group can be saved as a workspace and recalled later by name.
+
+![Four Intern examples: finding the PDF you just downloaded, opening the files you used in the last hour, reopening the Devin Ambassador pages you visited today, and saving three apps as a Writing workspace you recall by name](docs/demo.gif)
 
 The first five examples show live Jev ranking against single targets. The final example uses the current panel's scopes and Actions menu to group three apps, save them as `Writing mode`, and recall the workspace by name.
 
@@ -21,23 +23,21 @@ The first five examples show live Jev ranking against single targets. The final 
 
 Intern runs in the menu bar, not the Dock. For AI ranking, add your TypeSafe API key in Settings. Without a key, local search remains available.
 
-## What only Intern does
+## What Intern does
 
 - Describe a file instead of naming it.
-- `the pdf I just downloaded` opens the newest one, judged by when it arrived.
-- `the last pdf I opened`, judged by actual open dates, not edits.
-- `files I modified yesterday`, filtered by time window before Jev sees them.
+- `the pdf I just downloaded` opens the newest arrival.
+- `the last pdf I opened`, by when you opened it, not when it changed.
+- `files I modified yesterday`, `the deck from last week`.
 - `the devin links I visited today` reopens the Chrome pages you mean.
-- `open the ambassador links I visited this week`, all at once.
-- Time windows like `last hour`, `this morning` or `a few days ago`.
-- Jev decides whether you mean one item or all of them.
-- Group the files you used this morning into one Open all.
+- `open the ambassador links I visited this week`, all in one go.
+- Time windows in plain words: `last hour`, `this morning`, `a few days ago`.
+- Group the files you used this morning into a single Open all.
 - Uncheck a member before opening the group.
-- Save a group as a workspace and recall it by description.
-- Chrome history stays on your Mac; only matching rows are judged.
-- Frequent launches float up; clear the history any time.
-- Everything above is re-ranked by meaning on every keystroke, about 100 ms.
-- A green ↵ appears the moment your intent is unambiguous.
+- Save a group as a workspace and recall it by name.
+- Clear launch history when you want a clean slate.
+
+Under the hood: local search finds candidates, Jev re-ranks them by meaning on every keystroke in about 100 ms, and decides whether you mean one item or all of them. A green ↵ appears the moment your intent is unambiguous. Chrome history is read locally and only the matching rows are ever sent.
 
 You can also do the usual launcher things: open apps and files, toggle dark mode, turn Wi-Fi on or off, sleep or lock the screen, empty the Trash, calculate `15% of 240` inline, run Shortcuts, Quick Look a file, reveal it in Finder, copy a path, pin anything, and search the web.
 
@@ -45,7 +45,7 @@ You can also do the usual launcher things: open apps and files, toggle dark mode
 
 A launcher is judged per keystroke. Previous single-target runs measured about 100 ms per Jev round trip from this VM. Local results appear immediately; Jev refines them when its answer arrives. Superseded requests are canceled, old responses are rejected, and manually selected rows stay selected when ranking changes. Spotlight searches in parallel and can trigger a fresh judgment when it finds more candidates.
 
-## What it does
+## How it works
 
 ### Find files by what happened
 
