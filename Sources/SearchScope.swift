@@ -12,10 +12,18 @@ enum SearchScope: String, CaseIterable, Identifiable {
   func includes(_ candidate: Candidate) -> Bool {
     switch self {
     case .all: return true
-    case .files: return candidate.kind == .openFile && candidate.fileURL != nil
-    case .apps: return candidate.kind == .openApp
-    case .links: return candidate.kind == .openURL
-    case .workspaces: return candidate.id.hasPrefix("workspace:")
+    case .files:
+      if case .file = candidate.payload { return candidate.kind == .openFile }
+      return false
+    case .apps:
+      if case .app = candidate.payload { return candidate.kind == .openApp }
+      return false
+    case .links:
+      if case .url = candidate.payload { return candidate.kind == .openURL }
+      return false
+    case .workspaces:
+      if case .group = candidate.payload { return candidate.id.hasPrefix("workspace:") }
+      return false
     }
   }
 }

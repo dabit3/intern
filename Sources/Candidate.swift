@@ -29,7 +29,7 @@ enum ActionKind: String, CaseIterable, Codable, Sendable {
     switch self {
     case .openApp: return "Launch or switch to an installed application."
     case .openFile: return "Open a document, folder or file from disk."
-    case .openURL: return "Reopen a web page the user has visited before, from browser history."
+    case .openURL: return "Open a web address or reopen a page from browser history."
     case .webSearch: return "Look something up on the web; a question or topic, not a local item."
     case .calculate: return "Evaluate arithmetic, percentages or unit-free math."
     case .systemToggle:
@@ -67,11 +67,12 @@ struct Candidate: Identifiable, Hashable, Codable, Sendable {
   let modifiedAt: Date?
   let lastOpenedAt: Date?
   let addedAt: Date?
+  let visitedAt: Date?
 
   init(
     id: String, title: String, subtitle: String, kind: ActionKind, keywords: [String] = [],
     payload: Payload, ageDays: Double? = nil, modifiedAt: Date? = nil,
-    lastOpenedAt: Date? = nil, addedAt: Date? = nil
+    lastOpenedAt: Date? = nil, addedAt: Date? = nil, visitedAt: Date? = nil
   ) {
     self.id = id
     self.title = title
@@ -83,6 +84,7 @@ struct Candidate: Identifiable, Hashable, Codable, Sendable {
     self.modifiedAt = modifiedAt
     self.lastOpenedAt = lastOpenedAt
     self.addedAt = addedAt
+    self.visitedAt = visitedAt
   }
 
   var isOpenable: Bool {
@@ -100,23 +102,38 @@ struct Candidate: Identifiable, Hashable, Codable, Sendable {
   }
 
   func age(for intent: FileRecency, now: Date) -> Double? {
-    guard case .file = payload else { return ageDays }
+    let fallback = ageDays.flatMap { $0.isFinite ? $0 : nil }
+    if case .url = payload, let visitedAt {
+      let age = now.timeIntervalSince(visitedAt) / 86_400
+      return age.isFinite ? age : nil
+    }
+    guard case .file = payload else { return fallback }
     let date: Date?
     switch intent {
     case .opened: date = lastOpenedAt
     case .added: date = addedAt ?? modifiedAt
     case .modified: date = modifiedAt
     }
-    if let date { return max(0, now.timeIntervalSince(date)) / 86_400 }
-    return intent == .opened ? nil : ageDays
+    if let date {
+      let age = now.timeIntervalSince(date) / 86_400
+      return age.isFinite ? age : nil
+    }
+    return intent == .opened ? nil : fallback
   }
 
   /// Lower-cased text the fuzzy matcher searches: title words plus keywords.
   var searchTerms: [String] {
-    var terms = title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(
-      String.init)
-    terms.append(contentsOf: keywords.map { $0.lowercased() })
-    return terms
+    Fuzzy.tokens(title) + keywords.flatMap(Fuzzy.tokens) + appRoleTerms
+  }
+
+  var appRoleTerms: [String] {
+    guard case .app = payload else { return [] }
+    switch title.lowercased() {
+    case "safari", "google chrome": return ["web", "browser"]
+    case "terminal": return ["command", "line", "shell"]
+    case "visual studio code": return ["code", "editor"]
+    default: return []
+    }
   }
 }
 
