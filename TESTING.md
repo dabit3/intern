@@ -40,7 +40,7 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `StateQualityTests.swift` | Stale executions/replies, source preferences, malformed persisted state, workspace identity and advancing visit ages |
 | `OnlineQualityTests.swift` | Mocked transport failures, cancellation, retry bounds, malformed probability distributions and bounded request data |
 | `ExecutionQualityTests.swift` | Unicode/scientific arithmetic, invalid groups, registered-browser routing, clipboard failures and subprocess lifecycle |
-| `InteractionQualityTests.swift` | Native editor focus, Quick Look dismissal, IME/modifier routing, repeat suppression, overlay priority and panel geometry |
+| `InteractionQualityTests.swift` | Native editor focus, Quick Look dismissal, IME/modifier routing, repeat suppression, overlay priority, panel geometry and the ⌘, / ⌘Q launcher shortcuts |
 | `IntegrationQualityTests.swift` | Local filenames versus domains, repeated/oversized search terms and history recency across indexing/request boundaries |
 
 Model tests inject request and index-building functions and use isolated `UserDefaults` suites. Index cancellation tests use a fake file manager, so they never request access to personal folders. They cover cancellation before scanning, cancellation between folders, panel closure, and source changes. Executor unit tests validate routing inputs without running system commands. The confirmation test checks only the first Enter; it never empties Trash.
@@ -129,9 +129,10 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 3. Switch to local-only mode and reopen the launcher. Search, pins, preview, workspaces, arithmetic and manual groups should remain available with no Jev requests.
 4. Use an invalid API key in a separate launch or disconnect networking. Verify local results remain usable and the header warning explains the failure.
 5. With no saved key and local-only mode off, type a query. The status line should read *Add a TypeSafe key in Settings* with **Settings** underlined. Clicking it must hide the launcher and open Settings without the menu bar item; the same query must be searchable again afterward.
-6. Remove a disposable file after retrieving it, then try to open it. An error should be shown and no successful launch should be recorded.
-7. Search Empty Trash and press Enter once. A separate confirmation should appear. Press Escape to cancel. Do not confirm in an account with personal Trash contents.
-8. Start a slow action, then enter another query. The old completion must not dismiss that new search.
+6. Press ⌘, in the launcher, including while the workspace name editor is open. Settings must open the same way. Press ⌘Q in the launcher and confirm Intern quits; relaunch it afterward.
+7. Remove a disposable file after retrieving it, then try to open it. An error should be shown and no successful launch should be recorded.
+8. Search Empty Trash and press Enter once. A separate confirmation should appear. Press Escape to cancel. Do not confirm in an account with personal Trash contents.
+9. Start a slow action, then enter another query. The old completion must not dismiss that new search.
 
 ## OS permissions and gaps
 

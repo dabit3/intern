@@ -28,7 +28,7 @@ Intern runs in the menu bar, not the Dock.
 **You need a TypeSafe API key for AI-powered ranking.** Local search works without one.
 
 1. Sign in to the [TypeSafe dashboard](https://console.typesafe.ai/keys) and get an API key. See the [TypeSafe quick start](https://docs.typesafe.ai/introduction/quickstart) for more details.
-2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**. If the icon is hidden, press **Option-Space**, type anything, and click the underlined **Settings** link in the *Add a TypeSafe key in Settings* message.
+2. Click Intern's bolt icon in the macOS menu bar and choose **Settings…**. If the icon is hidden, press **Option-Space** and then **Command-Comma** (⌘,). The *Add a TypeSafe key in Settings* message also links to Settings, and **⌘Q** quits Intern from the launcher.
 3. In the **TypeSafe** section, paste your key into **API key** and click **Save** (or press **Command-S**). **Unsaved changes** becomes **API key saved** once it is stored. No terminal command is needed for the downloaded app.
 4. Under **Search and privacy**, leave **Keep searches on this Mac** turned off to enable online ranking. You can also choose whether to search files with Spotlight and include Chrome browsing history.
 5. Close Settings, press **Option-Space**, and try `the pdf I just downloaded`. Press **Return** to open the selected result. Allow access to folders you want to search when macOS asks.
@@ -226,7 +226,7 @@ Debug builds appear as `Intern Dev` in macOS permission prompts and use separate
 
 - **⌥Space** toggles the panel from anywhere (Carbon `RegisterEventHotKey`; no Accessibility permission needed).
 - **↑ / ↓** move the selection, **↵** runs it, **esc** hides the panel. The example chips in the empty state (`dark`, `wifi off`, `15% of 240`, `the pdf I just downloaded`, `links I visited today`) are clickable.
-- The menu-bar ⚡ item has Toggle Intern, Settings and Quit. The app has no Dock icon (`LSUIElement`).
+- The menu-bar ⚡ item has Toggle Intern, Settings and Quit. The app has no Dock icon (`LSUIElement`). If the menu bar hides the item, **⌘,** opens Settings and **⌘Q** quits from the launcher.
 - The panel is a translucent `NSVisualEffectView` HUD that resizes to its content (up to seven rows). App and file rows show the real Finder icon; toggles, the calculator, web search, links and group rows use tinted SF Symbols. A small dot next to the field shows while a request is in flight; the bolt turns green when the top row is ready. The footer is just latency and cost.
 
 | Shortcut | Action |
@@ -238,6 +238,8 @@ Debug builds appear as `Intern Dev` in macOS permission prompts and use separate
 | ⌘P | Pin or unpin |
 | ⇧⌘Space | Include or exclude the selected item in a group |
 | Tab / Shift-Tab | Next / previous scope |
+| ⌘, | Open Settings |
+| ⌘Q | Quit Intern |
 
 The older `⌘Space` group shortcut remains available when it is not assigned to macOS Spotlight. Use `⇧⌘Space`, the member checkbox or the Actions menu with the default macOS shortcuts.
 

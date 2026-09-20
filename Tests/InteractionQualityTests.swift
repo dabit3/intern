@@ -311,6 +311,44 @@ final class InteractionQualityTests: XCTestCase {
     XCTAssertEqual(model.scope, .workspaces)
   }
 
+  func testQuitAndSettingsShortcutsWorkWithoutTheMenuBarItem() async throws {
+    let model = try makeModel()
+    let controller = InternPanelIntern(model: model)
+    var quits = 0
+    controller.terminate = { quits += 1 }
+    controller.show()
+    defer { controller.hide() }
+    await settle()
+    model.query = "pdf"
+    let panel = try launcherWindow()
+
+    XCTAssertNil(controller.handleKeyEvent(try key(43, in: panel, modifiers: .command)))
+    XCTAssertEqual(model.settingsRequests, 1)
+    XCTAssertNil(
+      controller.handleKeyEvent(try key(43, in: panel, modifiers: .command, repeated: true)))
+    XCTAssertEqual(model.settingsRequests, 1)
+    let shifted = try key(43, in: panel, modifiers: [.command, .shift])
+    XCTAssertTrue(controller.handleKeyEvent(shifted) === shifted)
+    XCTAssertEqual(model.settingsRequests, 1)
+    XCTAssertEqual(model.query, "pdf")
+
+    model.toggleMember(Fixtures.roadmap)
+    model.toggleMember(Fixtures.invoice)
+    model.actionsVisible = true
+    model.performAction(.saveWorkspace)
+    XCTAssertTrue(model.savingWorkspace)
+    XCTAssertNil(controller.handleKeyEvent(try key(43, in: panel, modifiers: .command)))
+    XCTAssertEqual(model.settingsRequests, 2)
+
+    let optioned = try key(12, in: panel, modifiers: [.command, .option])
+    XCTAssertTrue(controller.handleKeyEvent(optioned) === optioned)
+    XCTAssertEqual(quits, 0)
+    XCTAssertNil(controller.handleKeyEvent(try key(12, in: panel, modifiers: .command)))
+    XCTAssertNil(
+      controller.handleKeyEvent(try key(12, in: panel, modifiers: .command, repeated: true)))
+    XCTAssertEqual(quits, 1)
+  }
+
   func testEventsFromOtherWindowsAndHiddenPanelsPassThrough() async throws {
     let model = try makeModel()
     let controller = InternPanelIntern(model: model)

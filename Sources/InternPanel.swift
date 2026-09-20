@@ -54,6 +54,7 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
   private var subscriptions: Set<AnyCancellable> = []
   private var previewWindow: NSWindow?
   private var isHiding = false
+  var terminate: () -> Void = { NSApplication.shared.terminate(nil) }
 
   init(model: InternModel) {
     self.model = model
@@ -211,6 +212,11 @@ final class InternPanelIntern: NSObject, NSWindowDelegate {
     guard window === panel else { return event }
     if let input = panel.firstResponder as? NSTextInputClient, input.hasMarkedText() {
       return event
+    }
+    if modifiers == .command, event.keyCode == 12 || event.keyCode == 43 {
+      guard !event.isARepeat else { return nil }
+      if event.keyCode == 12 { terminate() } else { model.requestSettings() }
+      return nil
     }
     if modifiers.isEmpty, event.keyCode == 53 {
       if !event.isARepeat, !model.cancelOverlay() { hide() }

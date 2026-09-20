@@ -56,6 +56,7 @@ struct InternView: View {
     .onAppear { restoreFocus() }
     .onChange(of: model.savingWorkspace) { _, _ in restoreFocus() }
     .onChange(of: model.confirmation?.id) { _, _ in restoreFocus() }
+    .onChange(of: model.settingsRequests) { _, _ in model.openSettings { openSettings() } }
     .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) {
       notification in
       if notification.object is KeyablePanel { restoreFocus() }
@@ -145,9 +146,9 @@ struct InternView: View {
     guard !model.isExecuting, model.needsAPIKey, let range = text.range(of: "Settings") else {
       return text
     }
-    text[range].link = Self.settingsLink
-    text[range].foregroundColor = Theme.accent
-    text[range].underlineStyle = .single
+    text[range][AttributeScopes.FoundationAttributes.LinkAttribute.self] = Self.settingsLink
+    text[range][AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Theme.accent
+    text[range][AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] = .single
     return text
   }
 

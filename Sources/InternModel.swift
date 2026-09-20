@@ -38,6 +38,7 @@ final class InternModel: ObservableObject {
   @Published var savingWorkspace = false
   @Published private(set) var confirmation: Candidate?
   @Published private(set) var isExecuting = false
+  @Published private(set) var settingsRequests = 0
 
   let library: PersonalLibrary
   var onExecute: (() -> Void)?
@@ -233,6 +234,10 @@ final class InternModel: ObservableObject {
 
   func openSettings(_ open: () -> Void) {
     if let onOpenSettings { onOpenSettings(open) } else { open() }
+  }
+
+  func requestSettings() {
+    settingsRequests += 1
   }
 
   func preferencesChanged() {
