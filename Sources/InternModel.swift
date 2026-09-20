@@ -50,6 +50,7 @@ final class InternModel: ObservableObject {
   private var sequence = 0
   private var queryGeneration = 0
   private var indexGeneration = 0
+  private var executionGeneration = 0
   private var manuallySelectedID: String?
   private var memberSelection: Set<String>?
   private var selectedMemberCandidates: [String: Candidate] = [:]
@@ -87,26 +88,39 @@ final class InternModel: ObservableObject {
       }
       .store(in: &subscriptions)
     currentPreferences = preferences
-    libraryCandidates = library.candidates()
+    libraryCandidates = visibleLibraryCandidates()
+  }
+
+  deinit {
+    indexTask?.cancel()
+    requestTask?.cancel()
   }
 
   private struct Preferences: Equatable {
     let history: Bool
     let spotlight: Bool
     let localOnly: Bool
+    let apiKey: String
   }
 
   private var preferences: Preferences {
     Preferences(
       history: defaults.object(forKey: "includeChromeHistory") as? Bool ?? true,
       spotlight: defaults.object(forKey: "includeSpotlight") as? Bool ?? true,
-      localOnly: defaults.bool(forKey: "localOnly"))
+      localOnly: defaults.bool(forKey: "localOnly"),
+      apiKey: defaults.string(forKey: JevClient.apiKeyDefaultsKey)?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? "")
   }
 
-  private var currentPreferences = Preferences(history: true, spotlight: true, localOnly: false)
+  private var currentPreferences = Preferences(
+    history: true, spotlight: true, localOnly: false, apiKey: "")
   var isLocalOnly: Bool { preferences.localOnly }
   var isEmptyQuery: Bool { query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-  var hasAPIKey: Bool { JevClient.apiKey() != nil }
+  var hasAPIKey: Bool {
+    ProcessInfo.processInfo.environment["TYPESAFE_API_KEY"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+      || !preferences.apiKey.isEmpty
+  }
   var topHit: RankedHit? { hits.indices.contains(selection) ? hits[selection] : hits.first }
   var hasEditableGroup: Bool { memberSelection != nil || hits.contains { $0.id == Ranker.groupID } }
 
@@ -175,13 +189,17 @@ final class InternModel: ObservableObject {
   func panelWillShow() {
     isShowing = true
     if currentPreferences != preferences {
+      if currentPreferences.apiKey != preferences.apiKey {
+        retryAfter = .distantPast
+        backoff = 0
+      }
       currentPreferences = preferences
       index = []
       spotlightCandidates = []
     }
     captureContext()
     status = nil
-    libraryCandidates = library.candidates()
+    libraryCandidates = visibleLibraryCandidates()
     refreshResults()
     rebuildIndex()
   }
@@ -211,19 +229,27 @@ final class InternModel: ObservableObject {
   func preferencesChanged() {
     guard currentPreferences != preferences else { return }
     let historyChanged = currentPreferences.history != preferences.history
+    let apiKeyChanged = currentPreferences.apiKey != preferences.apiKey
     if historyChanged {
       index = []
       indexGeneration += 1
       indexTask?.cancel()
       isIndexing = false
     }
+    if apiKeyChanged {
+      retryAfter = .distantPast
+      backoff = 0
+    }
     currentPreferences = preferences
+    libraryCandidates = visibleLibraryCandidates()
     queryChanged()
     if isShowing && historyChanged { rebuildIndex() }
   }
 
   func reset() {
     isShowing = false
+    executionGeneration += 1
+    isExecuting = false
     indexGeneration += 1
     indexTask?.cancel()
     isIndexing = false
@@ -244,6 +270,8 @@ final class InternModel: ObservableObject {
     manuallySelectedID = nil
     actionsVisible = false
     savingWorkspace = false
+    workspaceName = ""
+    status = nil
     lastError = nil
   }
 
@@ -302,9 +330,10 @@ final class InternModel: ObservableObject {
   func togglePin() {
     guard let candidate = topHit?.candidate else { return }
     library.togglePin(candidate)
-    libraryCandidates = library.candidates()
+    libraryCandidates = visibleLibraryCandidates()
     actionsVisible = false
     refreshResults()
+    if !isEmptyQuery { requestJudgment() }
   }
 
   func saveWorkspace() {
@@ -316,26 +345,32 @@ final class InternModel: ObservableObject {
     actionsVisible = false
     workspaceName = ""
     status = "Workspace saved"
-    libraryCandidates = library.candidates()
+    libraryCandidates = visibleLibraryCandidates()
     refreshResults()
+    if !isEmptyQuery { requestJudgment() }
   }
 
   func deleteWorkspace() {
     guard let candidate = topHit?.candidate, candidate.id.hasPrefix("workspace:") else { return }
     library.deleteWorkspace(id: candidate.id)
-    libraryCandidates = library.candidates()
+    index.removeAll { $0.id == candidate.id }
+    spotlightCandidates.removeAll { $0.id == candidate.id }
+    libraryCandidates = visibleLibraryCandidates()
     actionsVisible = false
     refreshResults()
+    if !isEmptyQuery { requestJudgment() }
   }
 
   func clearHistory() {
     library.clearHistory()
-    libraryCandidates = library.candidates()
+    libraryCandidates = visibleLibraryCandidates()
     refreshResults()
+    if !isEmptyQuery { requestJudgment() }
   }
 
   func revealSelection() {
-    guard let url = topHit?.candidate.fileURL else { return }
+    guard let candidate = topHit?.candidate, let url = candidate.fileURL else { return }
+    guard validate(candidate) else { return }
     NSWorkspace.shared.activateFileViewerSelecting([url])
     onExecute?()
   }
@@ -380,21 +415,46 @@ final class InternModel: ObservableObject {
     }
     confirmation = nil
     let executedQuery = query
-    let executionGeneration = queryGeneration
+    let queryAtExecution = queryGeneration
+    executionGeneration += 1
+    let execution = executionGeneration
+    let execute = execute
     isExecuting = true
-    Task {
+    Task { [weak self] in
       let result = await execute(candidate)
-      isExecuting = false
-      if result.succeeded {
-        library.record(candidate, query: executedQuery)
-        libraryCandidates = library.candidates()
+      guard let self else { return }
+      if execution == self.executionGeneration {
+        self.isExecuting = false
       }
-      guard executionGeneration == queryGeneration else { return }
-      status = result.succeeded ? result.message : nil
       if result.succeeded {
-        onExecute?()
+        self.library.record(candidate, query: executedQuery)
+        self.libraryCandidates = self.visibleLibraryCandidates()
+      }
+      guard execution == self.executionGeneration, queryAtExecution == self.queryGeneration else {
+        return
+      }
+      self.status = result.succeeded ? result.message : nil
+      if result.succeeded {
+        self.lastError = nil
+        self.onExecute?()
       } else {
-        lastError = result.message
+        self.lastError = result.message
+        self.sequence += 1
+        self.requestTask?.cancel()
+        self.inFlight = 0
+        self.judgment = nil
+        self.judgmentIsFresh = false
+        if let url = candidate.fileURL, url.isFileURL,
+          !FileManager.default.fileExists(atPath: url.path)
+        {
+          self.index.removeAll { $0.id == candidate.id }
+          self.spotlightCandidates.removeAll { $0.id == candidate.id }
+          self.libraryCandidates.removeAll { $0.id == candidate.id }
+          self.memberSelection?.remove(candidate.id)
+          self.selectedMemberCandidates.removeValue(forKey: candidate.id)
+          self.reviewedGroup?.removeAll { $0.id == candidate.id }
+        }
+        self.refreshResults()
       }
     }
   }
@@ -463,8 +523,29 @@ final class InternModel: ObservableObject {
       return
     }
     var candidates: [String: Candidate] = [:]
-    for item in index + spotlightCandidates + libraryCandidates { candidates[item.id] = item }
-    let all = Array(candidates.values).sorted { $0.id < $1.id }
+    for item in libraryCandidates + index + spotlightCandidates {
+      if case .file = item.payload, let opened = library.snapshot.records[item.id]?.lastOpened,
+        opened > (item.lastOpenedAt ?? .distantPast)
+      {
+        candidates[item.id] = Candidate(
+          id: item.id, title: item.title,
+          subtitle:
+            item.subtitle + " · "
+            + LocalIndex.recency(max(0, Date().timeIntervalSince(opened)) / 86_400)
+            .replacingOccurrences(of: "modified", with: "opened in launcher"),
+          kind: item.kind, keywords: item.keywords, payload: item.payload, ageDays: item.ageDays,
+          modifiedAt: item.modifiedAt, lastOpenedAt: opened, addedAt: item.addedAt)
+      } else {
+        candidates[item.id] = item
+      }
+    }
+    let all = candidates.values.map { candidate in
+      guard case .group(let members) = candidate.payload else { return candidate }
+      return Candidate(
+        id: candidate.id, title: candidate.title, subtitle: candidate.subtitle,
+        kind: candidate.kind, keywords: candidate.keywords,
+        payload: .group(members.map { candidates[$0.id] ?? $0 }))
+    }.sorted { $0.id < $1.id }
     if isEmptyQuery {
       hits = library.home(candidates: all, scope: scope)
       selection =
@@ -512,7 +593,9 @@ final class InternModel: ObservableObject {
     let seq = sequence
     requestTask?.cancel()
     inFlight = 0
+    judgment = nil
     judgmentIsFresh = false
+    if !isEmptyQuery { updateHits() }
     guard !isEmptyQuery, reviewedGroup == nil, !prefiltered.candidates.isEmpty, !isLocalOnly,
       Date() >= retryAfter
     else {
@@ -521,44 +604,71 @@ final class InternModel: ObservableObject {
       }
       return
     }
+    guard query.utf8.count <= 2_048 else {
+      lastError = "Query is too long for online ranking. Local results are available."
+      return
+    }
     let request = JevQuestions.buildRequest(
       query: query, context: context, candidates: prefiltered.candidates, window: prefiltered.window
     )
     let sent = prefiltered
     inFlight = 1
-    requestTask = Task { [ask] in
-      defer { if seq == sequence { inFlight = 0 } }
+    requestTask = Task { [weak self, ask] in
+      guard !Task.isCancelled else { return }
+      guard self?.isLocalOnly == false else {
+        if self?.sequence == seq { self?.inFlight = 0 }
+        return
+      }
       do {
         let result = try await ask(request)
-        stats.recordSuccess(
+        guard let self else { return }
+        guard seq == self.sequence, !Task.isCancelled else {
+          self.stats.recordStale()
+          return
+        }
+        self.inFlight = 0
+        self.stats.recordSuccess(
           latencyMs: result.latencyMs, inputTokens: result.response.usage.inputTokens,
           outputTokens: result.response.usage.outputTokens, at: Date().timeIntervalSince1970)
-        guard seq == sequence, !Task.isCancelled else {
-          stats.recordStale()
-          return
-        }
         guard let parsed = JevQuestions.parse(result.response, candidates: sent.candidates) else {
-          lastError = "No usable online ranking returned. Local results are available."
+          self.judgment = nil
+          self.judgmentIsFresh = false
+          self.lastError = "No usable online ranking returned. Local results are available."
+          self.updateHits()
           return
         }
-        judgment = parsed
-        backoff = 0
-        judgmentIsFresh = true
-        lastError = nil
-        updateHits()
+        self.judgment = parsed
+        self.backoff = 0
+        self.judgmentIsFresh = true
+        self.lastError = nil
+        self.updateHits()
       } catch {
-        guard seq == sequence, !Task.isCancelled else { return }
-        stats.recordFailure()
-        judgment = nil
-        judgmentIsFresh = false
+        guard let self, seq == self.sequence, !Task.isCancelled else { return }
+        self.inFlight = 0
+        self.stats.recordFailure()
+        self.judgment = nil
+        self.judgmentIsFresh = false
         if case JevClient.Failure.rateLimited(let delay) = error {
-          backoff = max(delay, min(60, max(15, backoff * 2)))
-          retryAfter = Date().addingTimeInterval(backoff)
+          self.backoff = max(delay, min(60, max(15, self.backoff * 2)))
+          self.retryAfter = Date().addingTimeInterval(self.backoff)
         }
-        lastError = describe(error)
-        updateHits()
+        self.lastError = self.describe(error)
+        self.updateHits()
       }
     }
+  }
+
+  private func visibleLibraryCandidates() -> [Candidate] {
+    library.candidates().filter { candidate in
+      preferences.history || candidate.kind != .openURL || library.isPinned(candidate)
+    }
+  }
+
+  private func validate(_ candidate: Candidate) -> Bool {
+    guard let problem = Executor.validationError(candidate) else { return true }
+    actionsVisible = false
+    lastError = problem
+    return false
   }
 
   private func describe(_ error: Error) -> String {
