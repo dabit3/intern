@@ -31,6 +31,28 @@ enum Ranker {
   static let calculationID = "calc:result"
   static let groupID = "group:all"
 
+  private static let fileTypes: [String: Set<String>] = [
+    "pdf": ["pdf"], "paper": ["pdf"],
+    "image": ["png", "jpg", "jpeg", "gif", "heic", "webp"],
+    "picture": ["png", "jpg", "jpeg", "gif", "heic", "webp"],
+    "photo": ["png", "jpg", "jpeg", "gif", "heic", "webp"],
+    "screenshot": ["png", "jpg", "jpeg", "heic"],
+    "video": ["mov", "mp4", "m4v"], "movie": ["mov", "mp4", "m4v"],
+    "spreadsheet": ["csv", "xlsx", "xls", "numbers"],
+    "presentation": ["ppt", "pptx", "key"], "deck": ["ppt", "pptx", "key"],
+    "archive": ["zip", "tar", "gz"], "installer": ["dmg", "pkg"],
+  ]
+  private static let recencyWords: Set<String> = [
+    "latest", "newest", "recent", "recently", "most", "downloaded", "download",
+    "added", "opened", "used", "modified", "edited", "visited",
+  ]
+  private static let fileWords: Set<String> = ["file", "files", "document", "documents"]
+  private static let linkWords: Set<String> = ["link", "links", "page", "pages", "site", "sites"]
+  private static let fileExtensions = Set(fileTypes.values.flatMap { $0 }).union([
+    "doc", "docx", "odt", "rtf", "rtfd", "txt", "md", "swift", "json", "app",
+    "html", "css", "js", "ts", "py", "rb", "sh", "yml", "yaml", "xml", "plist",
+  ])
+
   /// Jev must lean at least this far toward "all" before the group row leads the list.
   static let setThreshold = 0.5
   /// A candidate is part of the set when Jev is at least this sure it fits the description.
@@ -60,45 +82,86 @@ enum Ranker {
     query: String, index: [Candidate], now: Date = Date(), scope: SearchScope = .all,
     boosts: [String: Double] = [:]
   ) -> Prefiltered {
-    let trimmed = query.trimmingCharacters(in: .whitespaces)
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return Prefiltered(candidates: [], fuzzy: [:]) }
     let window = TimeWindow.parse(trimmed, now: now)
-    let matchQuery = window?.remainder.trimmingCharacters(in: .whitespaces) ?? trimmed
+    let matchQuery = window?.remainder.trimmingCharacters(in: .whitespacesAndNewlines) ?? trimmed
+    let fullQuery = Fuzzy.Query(trimmed)
+    let words = Fuzzy.tokens(matchQuery)
+    let typeWords = Set(words.filter { fileTypes[singular($0)] != nil })
+    let extensions = typeWords.reduce(into: Set<String>()) {
+      $0.formUnion(fileTypes[singular($1)] ?? [])
+    }
+    let wordSet = Set(words)
+    let wantsFiles =
+      !extensions.isEmpty
+      || (!wordSet.isDisjoint(with: fileWords) && !wordSet.contains("hidden"))
+    let wantsLinks = !wantsFiles && !wordSet.isDisjoint(with: linkWords)
+    let hasRecency = window != nil || !wordSet.isDisjoint(with: recencyWords)
+    let structured = wantsFiles || wantsLinks || hasRecency
+    let descriptiveWords =
+      structured
+      ? words.filter {
+        !Fuzzy.stopwords.contains($0) && !typeWords.contains($0)
+          && !recencyWords.contains($0) && !fileWords.contains($0) && !linkWords.contains($0)
+      } : words
+    let prepared = Fuzzy.Query(descriptiveWords.joined(separator: " "))
     // "everything from the past hour": nothing describable is left once stopwords go.
     let windowOnly =
-      window != nil && Fuzzy.tokens(matchQuery).allSatisfy { Fuzzy.stopwords.contains($0) }
+      window != nil && descriptiveWords.isEmpty
     let limit = window == nil ? prefilterLimit : windowedPrefilterLimit
     let floor = window == nil ? minimumFuzzy : windowedMinimumFuzzy
 
-    var scored: [(Candidate, Double)] = []
+    var scored: [(candidate: Candidate, score: Double, age: Double)] = []
     let recency = FileRecency(query: trimmed)
     scored.reserveCapacity(index.count)
     for candidate in index where scope.includes(candidate) {
+      let lexical = Fuzzy.score(query: prepared, candidate: candidate, exactQuery: fullQuery)
+      if lexical < 1 {
+        if wantsFiles, !SearchScope.files.includes(candidate) { continue }
+        if wantsLinks, !SearchScope.links.includes(candidate) { continue }
+        if !extensions.isEmpty,
+          !extensions.contains(candidate.fileURL?.pathExtension.lowercased() ?? "")
+        {
+          continue
+        }
+      }
       let age = candidate.age(for: recency, now: now)
-      if recency == .opened, candidate.kind == .openFile, candidate.fileURL != nil, age == nil {
-        continue
+      if lexical < 1 {
+        if recency == .opened, SearchScope.files.includes(candidate), age == nil {
+          continue
+        }
+        if hasRecency, let age, age < 0 { continue }
+        if let window {
+          if let age, !window.contains(ageDays: age, now: now) { continue }
+          if age == nil,
+            SearchScope.files.includes(candidate) || SearchScope.links.includes(candidate)
+          {
+            continue
+          }
+        }
       }
-      if let window {
-        // Timeless items (apps, toggles) stay eligible; dated items must fall in the window.
-        if let age, !window.contains(ageDays: age, now: now) { continue }
-      }
+      let suppliedBoost = boosts[candidate.id] ?? 0
+      let boost = suppliedBoost.isFinite ? min(0.35, max(0, suppliedBoost)) : 0
       let score: Double
-      if windowOnly {
-        guard age != nil else { continue }
-        score = 0.5
+      if structured, descriptiveWords.isEmpty, lexical < 1 {
+        if windowOnly || hasRecency {
+          guard age != nil else { continue }
+        }
+        score = 0.8
       } else {
-        score = max(
-          Fuzzy.score(query: matchQuery, candidate: candidate),
-          (boosts[candidate.id] ?? 0) >= 0.3 ? 0.7 : 0)
+        let relevance = max(lexical, boost >= 0.3 ? 0.7 : 0)
+        score = lexical == 1 ? 1 : min(0.95, relevance + min(0.04, boost))
       }
-      if score >= floor { scored.append((candidate, min(1, score + (boosts[candidate.id] ?? 0)))) }
+      if score >= floor { scored.append((candidate, score, age ?? .infinity)) }
     }
     scored.sort { lhs, rhs in
-      if lhs.1 != rhs.1 { return lhs.1 > rhs.1 }
-      let lhsAge = lhs.0.age(for: recency, now: now) ?? .infinity
-      let rhsAge = rhs.0.age(for: recency, now: now) ?? .infinity
-      if lhsAge != rhsAge { return lhsAge < rhsAge }
-      return lhs.0.title < rhs.0.title
+      if lhs.score != rhs.score { return lhs.score > rhs.score }
+      if lhs.age != rhs.age { return lhs.age < rhs.age }
+      if lhs.candidate.title != rhs.candidate.title {
+        return lhs.candidate.title < rhs.candidate.title
+      }
+      return lhs.candidate.id < rhs.candidate.id
     }
     var candidates: [Candidate] = []
     var fuzzy: [String: Double] = [:]
@@ -110,18 +173,58 @@ enum Ranker {
       candidates.append(calc)
       fuzzy[calc.id] = 0.95
     }
-    for (candidate, score) in scored.prefix(limit) {
-      candidates.append(candidate)
-      fuzzy[candidate.id] = score
+    var seen = Set(candidates.map(\.id))
+    var retained = 0
+    for item in scored where seen.insert(item.candidate.id).inserted {
+      guard retained < limit else { break }
+      candidates.append(item.candidate)
+      fuzzy[item.candidate.id] = item.score
+      retained += 1
     }
     let web = Candidate(
       id: webSearchID, title: "Search the web for “\(trimmed)”",
       subtitle: "Opens your default browser", kind: .webSearch, payload: .webSearch(trimmed))
     if scope == .all || scope == .links {
+      if let url = directURL(trimmed),
+        !candidates.contains(where: { $0.kind != .openURL && fuzzy[$0.id] == 1 })
+      {
+        let id = "url:\(url.absoluteString)"
+        candidates.removeAll { $0.id == id }
+        candidates.insert(
+          Candidate(
+            id: id, title: url.absoluteString, subtitle: "Open website", kind: .openURL,
+            payload: .url(url)), at: 0)
+        fuzzy[id] = 1
+      }
       candidates.append(web)
       fuzzy[web.id] = 0.1
     }
     return Prefiltered(candidates: candidates, fuzzy: fuzzy, window: window)
+  }
+
+  private static func singular(_ word: String) -> String {
+    word.hasSuffix("s") ? String(word.dropLast()) : word
+  }
+
+  private static func directURL(_ text: String) -> URL? {
+    guard !text.contains(where: { $0.isWhitespace || $0.isNewline }) else { return nil }
+    let explicit = text.contains("://")
+    guard let components = URLComponents(string: explicit ? text : "https://\(text)"),
+      let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
+      components.user == nil, components.password == nil,
+      let host = components.host, !host.isEmpty,
+      components.port.map({ (1...65_535).contains($0) }) ?? true,
+      let url = components.url
+    else { return nil }
+    if !explicit {
+      let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+      guard labels.count >= 2, labels.allSatisfy({ !$0.isEmpty }),
+        let suffix = labels.last, suffix.count >= 2,
+        suffix.allSatisfy(\.isLetter),
+        !fileExtensions.contains(suffix.lowercased())
+      else { return nil }
+    }
+    return url
   }
 
   static let targetWeight = 0.65
@@ -136,7 +239,13 @@ enum Ranker {
   /// either way, and not at all when the query is clearly about one item.
   static func rank(_ prefiltered: Prefiltered, judgment: JevJudgment?) -> [RankedHit] {
     let members = setMembers(prefiltered, judgment: judgment)
-    var hits = prefiltered.candidates.map { candidate -> RankedHit in
+    let candidates = uniqueCandidates(prefiltered.candidates)
+    let positions = Dictionary(
+      uniqueKeysWithValues: candidates.enumerated().map { ($0.element.id, $0.offset) })
+    let probabilities = judgment?.targetProbabilities.values.sorted(by: >) ?? []
+    let lead = (probabilities.first ?? 0) - (probabilities.dropFirst().first ?? 0)
+    let onlineWeight = min(1, 2 * max(judgment?.targetConfidence ?? 0, lead))
+    var hits = candidates.map { candidate -> RankedHit in
       let fuzzy = prefiltered.fuzzy[candidate.id] ?? 0
       guard let judgment else {
         return RankedHit(
@@ -147,7 +256,9 @@ enum Ranker {
       let action = judgment.actionProbabilities[candidate.kind] ?? 0
       let match = judgment.matchProbabilities[candidate.id]
       let inSet = members.contains(candidate.id)
-      var score = targetWeight * target + actionWeight * action + fuzzyWeight * fuzzy
+      var score =
+        onlineWeight * (targetWeight * target + actionWeight * action)
+        + (1 - onlineWeight * (1 - fuzzyWeight)) * fuzzy
       if inSet { score += setMemberWeight * judgment.setProbability * (match ?? 0) }
       return RankedHit(
         candidate: candidate, fuzzy: fuzzy, jevProbability: target, matchProbability: match,
@@ -155,7 +266,7 @@ enum Ranker {
     }
     hits.sort { lhs, rhs in
       if lhs.score != rhs.score { return lhs.score > rhs.score }
-      return lhs.candidate.title < rhs.candidate.title
+      return (positions[lhs.id] ?? 0) < (positions[rhs.id] ?? 0)
     }
     guard let judgment, !members.isEmpty else { return hits }
     let ordered = hits.filter { members.contains($0.candidate.id) }.map(\.candidate)
@@ -165,9 +276,9 @@ enum Ranker {
     if judgment.setProbability >= setThreshold {
       // With no single target to pick, the target Choice leaks onto the web-search fallback;
       // keep it as the last resort so the members sit under the group row.
-      if let web = hits.firstIndex(where: { $0.id == webSearchID }) {
-        hits.append(hits.remove(at: web))
-      }
+      hits =
+        hits.filter(\.inSet) + hits.filter { !$0.inSet && $0.id != webSearchID }
+        + hits.filter { $0.id == webSearchID }
       hits.insert(group, at: 0)
     } else {
       hits.insert(group, at: min(1, hits.count))
@@ -179,7 +290,7 @@ enum Ranker {
   /// worth offering: at least two members and a query that is not clearly about one item.
   static func setMembers(_ prefiltered: Prefiltered, judgment: JevJudgment?) -> Set<String> {
     guard let judgment, judgment.setProbability >= offerThreshold else { return [] }
-    let eligible = prefiltered.candidates.filter { candidate in
+    let eligible = uniqueCandidates(prefiltered.candidates).filter { candidate in
       candidate.isOpenable
         && (judgment.matchProbabilities[candidate.id] ?? 0) >= memberThreshold
     }
@@ -190,20 +301,26 @@ enum Ranker {
     return Set(sorted.prefix(maximumSetSize).map(\.id))
   }
 
+  private static func uniqueCandidates(_ candidates: [Candidate]) -> [Candidate] {
+    var seen = Set<String>()
+    return candidates.filter { seen.insert($0.id).inserted }
+  }
+
   static func groupCandidate(_ members: [Candidate]) -> Candidate {
     let kinds = Set(members.map(\.kind))
     let kind = kinds.count == 1 ? kinds.first! : .unclear
     let noun: String
     switch kind {
-    case .openURL: noun = "links"
-    case .openFile: noun = "files"
-    case .openApp: noun = "apps"
-    default: noun = "items"
+    case .openURL: noun = "link"
+    case .openFile: noun = "file"
+    case .openApp: noun = "app"
+    default: noun = "item"
     }
     let names = members.prefix(3).map(\.title).joined(separator: ", ")
     let more = members.count > 3 ? " and \(members.count - 3) more" : ""
     return Candidate(
-      id: groupID, title: "Open all \(members.count) \(noun)",
+      id: groupID,
+      title: members.count == 1 ? "Open 1 \(noun)" : "Open all \(members.count) \(noun)s",
       subtitle: names + more, kind: kind, payload: .group(members))
   }
 }

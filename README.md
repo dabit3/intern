@@ -75,7 +75,7 @@ Press **⌘K** for the selected result's actions. Arrow keys select an action an
 
 ### Save a workflow
 
-Check or uncheck members of a suggested group, or build a group yourself with **⌘Space** on individual results. **Save group as workspace** gives it a name, such as `Writing` or `Launch research`. That name becomes a searchable result containing 2 to 25 apps, files or links. Open its Actions menu and choose **Review and edit items** to adjust the group before opening it or saving a new workspace. Workspaces are local, capped at 20, and removable from their Actions menu.
+Check or uncheck members of a suggested group, or build a group yourself with **⇧⌘Space** on individual results. **Save group as workspace** gives it a name, such as `Writing` or `Launch research`. That name becomes a searchable result containing 2 to 25 apps, files or links. Open its Actions menu and choose **Review and edit items** to adjust the group before opening it or saving a new workspace. Workspaces are local, capped at 20, and removable from their Actions menu.
 
 Only openable items can belong to groups. System commands and shortcuts cannot be bundled into a workspace. Empty Trash requires a separate confirmation after selection.
 
@@ -98,10 +98,10 @@ The fuzzy matcher gets plausible PDFs into the shortlist. Jev compares their add
 `open devin ambassador links I visited in the past 24 hours` produces the second screenshot above. In order:
 
 1. **Time window, in code.** `TimeWindow.parse` recognises `past 24 hours`, `last hour`, `yesterday`, `today`, `this week`, `last month`, `this morning`, `earlier today`, `a few days ago` and similar phrases and turns them into a `since`/`until` pair. Only candidates dated inside the window are eligible, the phrase is stripped from the text that gets fuzzy-matched, and the window is sent to Jev as `time_window`.
-2. **Chrome history, in code.** `ChromeHistory` copies each profile's `History` SQLite file (Chrome keeps the original locked), reads the last 90 days of `urls`, keeps `http(s)` only, merges duplicates across profiles and turns each row into a candidate: page title, host, `visited 2 h ago`, plus host and title words as keywords. Only the rows that survive the window and the fuzzy filter are sent (up to 30 with a window, 13 without). The database never leaves the machine.
+2. **Chrome history, in code.** `ChromeHistory` queries each regular profile read-only, including committed WAL visits. When Chrome holds an exclusive lock, it copies the database and journal sidecars into a private disposable snapshot, checks for concurrent file changes and lets SQLite recover and validate only that copy. The snapshot fallback is limited to 256 MiB. It keeps the last 90 days of `http(s)` visits, merges duplicate URLs across profiles and turns each row into a candidate: page title, host, absolute visit time, plus host and title words as keywords. Only the rows that survive the window and the fuzzy filter are sent (up to 30 with a window, 13 without). The database never leaves the machine.
 3. **Two extra questions in the same request.** `scope` is a Choice between `one` (a specific item) and `all` (every candidate that fits). `match_cN` is one Noul per real candidate: does this row fit the description? This is the [rerank pattern](https://docs.typesafe.ai/cookbooks/rerank_typesafe) from the TypeSafe cookbooks. Both come back in the same round trip as `target`, `action` and `ready`.
 4. **Group row, in code.** Rows with `match ≥ 0.6` (at least two, at most 25) form the set. The panel adds a synthetic `Open all 3 links` row: first when `P(all) ≥ 0.5`, right under the best single hit when Jev is torn (`0.15 ≤ P(all) < 0.5`), and not at all when the query is clearly about one thing (`P(all) < 0.15`). Members get a checkmark; ↓ still walks through them one by one. The group row is ready only when `P(all) ≥ 0.75`.
-5. **Enter opens them.** URL groups go to Chrome in one `NSWorkspace.open(_:withApplicationAt:)` call (default browser if Chrome is not installed); other members run through the normal single-item path. Nothing runs without Enter.
+5. **Enter opens them.** URLs use their registered browser, with group members batched by application handler; other members run through the normal single-item path. Nothing runs without Enter.
 
 The same machinery is not Chrome-specific. `the files I used in the last hour` can offer an `Open all` row over files with matching last-opened evidence, with older files excluded before Jev sees them. Mixed sets (`Open all 4 items`) work too. Membership checkboxes remain editable while an answer is in flight, and a new answer does not overwrite those choices.
 
@@ -145,8 +145,8 @@ Each query change starts a `POST /v1/systemone` with `model: jev-latest`, unless
   "context": { "frontmost_app": "Finder", "recent_apps": ["Finder", "Safari"], "clipboard_kind": "text", "time_of_day": "afternoon", "weekday": "Thursday" },
   "time_window": null,
   "candidates": [
-    { "id": "c0", "kind": "open_file", "title": "Q3-Roadmap-Review.pdf", "detail": "PDF in ~/Downloads · modified 16 min ago", "recency": { "basis": "modified", "seconds_ago": 964 } },
-    { "id": "c1", "kind": "open_file", "title": "invoice-2026-08.pdf", "detail": "PDF in ~/Downloads · modified 1 month ago", "recency": { "basis": "modified", "seconds_ago": 2678400 } },
+    { "id": "c0", "kind": "open_file", "title": "Q3-Roadmap-Review.pdf", "detail": "PDF in ~/Downloads · modified 16 min ago", "recency": { "basis": "modified", "seconds_ago": 964, "newest_rank": 1 } },
+    { "id": "c1", "kind": "open_file", "title": "invoice-2026-08.pdf", "detail": "PDF in ~/Downloads · modified 1 month ago", "recency": { "basis": "modified", "seconds_ago": 2678400, "newest_rank": 2 } },
     { "id": "c6", "kind": "web_search", "title": "Search the web for “the pdf I”", "detail": "Opens your default browser" }
   ]
 }
@@ -162,7 +162,7 @@ Candidates are the top 13 fuzzy matches from the merged local sources (30 when t
 4. `scope`: Choice between `one` and `all`, described above.
 5. `match_cN`: one Noul per real candidate (synthetic calculator and web rows excluded), described above.
 
-**Ranking** is deterministic given the answer: `score = 0.65 · P(target) + 0.20 · P(action matches kind) + 0.15 · fuzzy`, plus `0.25 · P(all) · P(match)` for rows in the set so members sit together under the group row. Without an answer the score is just `fuzzy`.
+**Ranking** is deterministic given the answer. Let `w = min(1, 2 · max(target confidence, lead over the next candidate))`. Then `score = w · (0.65 · P(target) + 0.20 · P(action matches kind)) + (1 − 0.85 · w) · fuzzy`, plus `0.25 · P(all) · P(match)` for rows in the set. Strong online judgments use the full semantic weighting; uncertain judgments retain more local relevance. Small probability-total differences from hundredth-place rounding are normalized; incomplete or invalid target distributions fall back locally. Without an answer the score is just `fuzzy`.
 
 **In-flight handling**: a response must belong to the current sequence and its task must not be canceled. Spotlight callbacks also check their search generation. While a replacement request is in flight, previous probabilities may stay visible but cannot light the readiness badge. Manual selection is preserved by candidate identity. Membership edits survive reordering. Late action completions cannot dismiss a newer query.
 
@@ -184,18 +184,18 @@ The `ready` wording went through several rounds against the five queries plus de
 
 ## What is local (code, not Jev)
 
-- **Index** (`LocalIndex.swift`): `.app` bundles in `/Applications`, `/System/Applications`, `/System/Applications/Utilities` and `~/Applications`; files in `~/Downloads`, `~/Desktop`, `~/Documents` (top level plus one nested level, capped at 400 per folder); user Shortcuts; nine system toggles; optional Chrome history (`ChromeHistory.swift`, every `Default` and `Profile *` profile, last 90 days, 3,000 rows). The index refreshes in the background when the panel opens.
+- **Index** (`LocalIndex.swift`): application bundles in standard and nested installation folders, Finder and the system Cryptex app folder; `~/Downloads`, `~/Desktop`, `~/Documents` themselves and their files (up to eight nested levels and 4,000 inspected entries per root, retaining 400 candidates by modified/added/opened recency); user Shortcuts; nine system toggles; optional Chrome history (regular profiles, last 90 days, at most 3,000 URLs). Packages, hidden/private directories and symlink trees are excluded from file traversal. The index refreshes in the background when the panel opens.
 - **Spotlight** (`SpotlightSearch.swift`): cancellable `NSMetadataQuery` searches with a one-second collection timeout. Results merge with the static index and library by identity before the bounded fuzzy prefilter.
 - **Personal library** (`PersonalLibrary.swift`): at most 200 local records, eight query aliases per record and 20 workspaces, persisted as Codable data in `UserDefaults` under `launcher.library.v1`. No file contents are stored.
 - **Time windows** (`TimeWindow.swift`): relative (`past 24 hours`, `last 3 days`, `a couple of weeks ago`), named (`today`, `yesterday`, `this week`, `last month`, `this morning`, `tonight`, `last night`, `just now`, `recently`) and number words, resolved against the local calendar.
 - **System toggles** (`Executor.swift`): Dark Mode (AppleScript to System Events), Wi-Fi on/off (`networksetup -setairportpower`), Do Not Disturb (opens Focus settings), Sleep (AppleScript), Lock Screen (`CGSession -suspend`), Empty Trash (AppleScript to Finder), Show/Hide hidden files (`defaults write` plus `killall Finder`).
-- **Calculator** (`Calculator.swift`): a recursive-descent parser for `+ - * / ^ ( )`, `x` as multiply, `sqrt`, percentages (`15% of 240`, `200 * 10%`), with an optional `calc` or `=` prefix. No `NSExpression`, no eval.
-- **Fuzzy prefilter** (`Fuzzy.swift`): exact, prefix, word-initial and subsequence scoring over title and keywords, with natural-language filler (`the`, `open`, `pages`, `about`, `read`, and so on) stripped so it never crowds out the words that matter.
-- **Execution**: `NSWorkspace.open` for apps, files and web searches; URLs and URL groups go to Chrome when installed (default browser otherwise), passed as values, never through a shell; the calculator result is copied to the clipboard.
+- **Calculator** (`Calculator.swift`): a bounded recursive-descent parser for `+ - * / ^ ( )`, Unicode operators (`− × ÷ √`), scientific notation, implicit multiplication, `sqrt`, and percentages (`15% of 240`, `200 * 10%`), with an optional `calc` or `=` prefix. No `NSExpression`, no eval.
+- **Fuzzy prefilter** (`Fuzzy.swift`): exact, prefix, word-initial, single-edit typo and subsequence scoring over normalized titles and keywords. File-type constraints and query-relevant recency preserve useful candidates before online ranking; natural-language filler is stripped.
+- **Execution**: `NSWorkspace.open` for apps, files and web searches; URLs and URL groups use their registered browser, passed as values, never through a shell. Group members are validated and deduplicated before opening. The calculator result is copied to the clipboard; subprocess actions have cancellation, timeout and output bounds.
 
 ## Run
 
-Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) only if you change `project.yml` (the generated project is committed).
+Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key for online ranking, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) if you change `project.yml` or add/remove source or test files (the generated project is committed).
 
 ```sh
 git clone https://github.com/dabit3/intern.git
@@ -222,16 +222,16 @@ Debug builds appear as `Intern Dev` in macOS permission prompts and use separate
 | ⌘R | Reveal the selected app or file in Finder |
 | ⇧⌘C | Copy path, link, result or group values |
 | ⌘P | Pin or unpin |
-| ⌘Space | Include or exclude the selected item in a group |
+| ⇧⌘Space | Include or exclude the selected item in a group |
 | Tab / Shift-Tab | Next / previous scope |
 
-`⌘Space` is commonly assigned to macOS Spotlight. If macOS intercepts it, use the member checkbox or the Actions menu instead.
+The older `⌘Space` group shortcut remains available when it is not assigned to macOS Spotlight. Use `⇧⌘Space`, the member checkbox or the Actions menu with the default macOS shortcuts.
 
 ### Privacy and failure behavior
 
 The request contains the query, short candidate titles/details, query-relevant file ages and limited context. Details can include folder names, browser hosts and workspace member names. File contents, clipboard text, the complete index and raw browser databases stay local. Local-only mode disables Jev requests; pinning, workspaces, previews, calculations and manual groups still work.
 
-Errors appear as a compact header icon with a tooltip. Missing keys, HTTP errors, timeouts and transport failures preserve local results. HTTP 429 and 529 pause new requests, honor `Retry-After` when supplied, and use increasing cooldowns for repeated limits. Enter remains explicit even when Jev reports high confidence. File existence, URL schemes and group eligibility are validated before execution.
+Errors and action feedback appear in a compact status line. Missing keys, HTTP errors, timeouts, malformed rankings and transport failures preserve local results. Queries over 2,048 UTF-8 bytes remain local rather than sending a truncated intent. HTTP 429 and 529 pause new requests, honor bounded `Retry-After` values when supplied, and use increasing cooldowns for repeated limits. Enter remains explicit even when Jev reports high confidence. File existence, URL schemes and group eligibility are validated before execution.
 
 ### Permissions
 

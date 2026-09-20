@@ -35,10 +35,17 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `InternExperienceTests.swift` | Opened/added/modified evidence, scopes, bounded personal boosts, Spotlight path filtering, execution validation, copy formatting, persistent pins/workspaces, group editing, stale replies, manual selection, local-only mode, cooldowns and Empty Trash confirmation |
 | `LiveExperienceTests.swift` | Live Jev judgments over fixed candidate fixtures for last-opened PDFs, named workspaces and recently used file groups |
 | `LiveJevTests.swift` | Live API against the machine's real local index and browsing fixtures |
+| `RankingQualityTests.swift` | Typos, accents, exact names, structured file constraints, direct URLs, recency ordering and calendar windows |
+| `IndexingQualityTests.swift` | Nested apps/files, bounded traversal, privacy filters, Shortcut deadlines and read-only Chrome WAL/profile fixtures |
+| `StateQualityTests.swift` | Stale executions/replies, source preferences, malformed persisted state, workspace identity and advancing visit ages |
+| `OnlineQualityTests.swift` | Mocked transport failures, cancellation, retry bounds, malformed probability distributions and bounded request data |
+| `ExecutionQualityTests.swift` | Unicode/scientific arithmetic, invalid groups, registered-browser routing, clipboard failures and subprocess lifecycle |
+| `InteractionQualityTests.swift` | Native editor focus, Quick Look dismissal, IME/modifier routing, repeat suppression, overlay priority and panel geometry |
+| `IntegrationQualityTests.swift` | Local filenames versus domains, repeated/oversized search terms and history recency across indexing/request boundaries |
 
 Model tests inject request and index-building functions and use isolated `UserDefaults` suites. Index cancellation tests use a fake file manager, so they never request access to personal folders. They cover cancellation before scanning, cancellation between folders, panel closure, and source changes. Executor unit tests validate routing inputs without running system commands. The confirmation test checks only the first Enter; it never empties Trash.
 
-Debug builds use `com.devin.typesafe.jev-launcher.debug` and the display name `Intern Dev`. The release keeps its original identifier. Do not assign the release identifier to an unsigned Debug build: macOS then replaces folder permission records when the two copies run. Test hosts do not register the global shortcut or create the launcher panel.
+Debug builds use `com.devin.typesafe.jev-launcher.debug` and the display name `Intern Dev`. The release keeps its original identifier. Do not assign the release identifier to an unsigned Debug build: macOS then replaces folder permission records when the two copies run. Test hosts do not register the global shortcut; interaction tests create isolated panels and restore their state.
 
 ## Live Jev checks
 
@@ -108,7 +115,7 @@ The built product is `build/Build/Products/Debug/Intern.app`, with executable `C
 
 1. Search for a set of recent files or links. A clear set intent should offer an `Open all` row, with individual results still selectable.
 2. Uncheck a member while a judgment is in flight. It must remain excluded when the reply arrives.
-3. Build a manual group using member actions or checkboxes. ⌘Space is also available when the system Spotlight shortcut does not intercept it.
+3. Build a manual group with ⇧⌘Space on individual results. Confirm a second press excludes the same item and holding the chord does not repeat the toggle. Member actions and checkboxes also work; the older ⌘Space shortcut remains available when the system Spotlight shortcut does not intercept it.
 4. Save two or more members as `Research`. Search that name in Workspaces, restart the app, and search again.
 5. Open the workspace's Actions menu → Review and edit items. Remove one member and check that the group count and primary action reflect the edited selection. Save as a new workspace if desired.
 6. Enter on a member opens one item; Enter on the group opens its selected members. Nothing opens from a Jev response alone.

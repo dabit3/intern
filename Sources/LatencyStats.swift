@@ -20,19 +20,25 @@ struct LatencyStats: Equatable, Sendable {
   var p95Ms: Double? { percentile(95) }
   var estimatedCostUSD: Double { Double(inputTokens) * Self.usdPerInputToken }
   var tokensPerDecision: Double {
-    requests == 0 ? 0 : Double(inputTokens + outputTokens) / Double(requests)
+    requests == 0 ? 0 : (Double(inputTokens) + Double(outputTokens)) / Double(requests)
   }
 
   mutating func recordSuccess(
     latencyMs: Double, inputTokens: Int, outputTokens: Int, at time: TimeInterval
   ) {
     requests += 1
-    self.inputTokens += inputTokens
-    self.outputTokens += outputTokens
-    samplesMs.append(latencyMs)
-    if samplesMs.count > Self.maxSamples { samplesMs.removeFirst() }
-    completionTimes.append(time)
-    completionTimes.removeAll { $0 < time - Self.rateWindowSeconds }
+    self.inputTokens = Self.addTokens(inputTokens, to: self.inputTokens)
+    self.outputTokens = Self.addTokens(outputTokens, to: self.outputTokens)
+    if latencyMs.isFinite, latencyMs >= 0 {
+      samplesMs.append(latencyMs)
+      if samplesMs.count > Self.maxSamples { samplesMs.removeFirst() }
+    }
+    if time.isFinite {
+      completionTimes.append(time)
+      let newest = completionTimes.max() ?? time
+      completionTimes.removeAll { $0 < newest - Self.rateWindowSeconds }
+      if completionTimes.count > Self.maxSamples { completionTimes.removeFirst() }
+    }
   }
 
   mutating func recordFailure() {
@@ -46,16 +52,22 @@ struct LatencyStats: Equatable, Sendable {
 
   /// Decisions completed per second over the trailing window.
   func decisionsPerSecond(now: TimeInterval) -> Double {
-    let recent = completionTimes.filter { $0 >= now - Self.rateWindowSeconds }
-    guard let first = recent.first, recent.count > 1 else { return Double(recent.count) }
+    guard now.isFinite else { return 0 }
+    let recent = completionTimes.filter { $0 >= now - Self.rateWindowSeconds && $0 <= now }
+    guard let first = recent.min(), recent.count > 1 else { return Double(recent.count) }
     let span = max(now - first, 1)
     return Double(recent.count) / span
   }
 
   func percentile(_ p: Double) -> Double? {
-    guard !samplesMs.isEmpty else { return nil }
+    guard !samplesMs.isEmpty, p.isFinite else { return nil }
     let sorted = samplesMs.sorted()
-    let rank = Int((Double(sorted.count - 1) * p / 100).rounded())
+    let rank = Int((Double(sorted.count - 1) * min(100, max(0, p)) / 100).rounded())
     return sorted[min(max(rank, 0), sorted.count - 1)]
+  }
+
+  private static func addTokens(_ value: Int, to total: Int) -> Int {
+    let (sum, overflow) = total.addingReportingOverflow(max(0, value))
+    return overflow ? Int.max : sum
   }
 }

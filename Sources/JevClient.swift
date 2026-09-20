@@ -36,18 +36,33 @@ struct JevClient: Sendable {
   }
 
   let session: URLSession
+  private let keyProvider: @Sendable () -> String?
 
-  init() {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.timeoutIntervalForRequest = Self.requestTimeout
-    configuration.httpMaximumConnectionsPerHost = 8
-    configuration.httpShouldUsePipelining = true
-    session = URLSession(configuration: configuration)
+  init(
+    session: URLSession? = nil,
+    apiKey: @escaping @Sendable () -> String? = { Self.apiKey() }
+  ) {
+    keyProvider = apiKey
+    if let session {
+      self.session = session
+    } else {
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.timeoutIntervalForRequest = Self.requestTimeout
+      configuration.timeoutIntervalForResource = Self.requestTimeout
+      configuration.httpMaximumConnectionsPerHost = 8
+      configuration.httpShouldSetCookies = false
+      configuration.urlCache = nil
+      self.session = URLSession(configuration: configuration)
+    }
   }
 
   func ask(_ request: JevRequest) async throws -> Result {
-    guard let key = Self.apiKey() else { throw Failure.missingAPIKey }
-    var urlRequest = URLRequest(url: Self.endpoint)
+    try Task.checkCancellation()
+    guard let key = keyProvider()?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty
+    else { throw Failure.missingAPIKey }
+    var urlRequest = URLRequest(
+      url: Self.endpoint, cachePolicy: .reloadIgnoringLocalCacheData,
+      timeoutInterval: Self.requestTimeout)
     urlRequest.httpMethod = "POST"
     urlRequest.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
     urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -57,11 +72,17 @@ struct JevClient: Sendable {
     do {
       (data, response) = try await session.data(for: urlRequest)
     } catch {
-      if Task.isCancelled { throw CancellationError() }
+      if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+        throw CancellationError()
+      }
       throw Failure.transport(error.localizedDescription)
     }
+    try Task.checkCancellation()
     let latencyMs = Double(DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1e6
-    if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+    guard let http = response as? HTTPURLResponse else {
+      throw Failure.transport("Invalid HTTP response")
+    }
+    if http.statusCode != 200 {
       if http.statusCode == 429 || http.statusCode == 529 {
         throw Failure.rateLimited(Self.retryDelay(http.value(forHTTPHeaderField: "Retry-After")))
       }
@@ -72,13 +93,14 @@ struct JevClient: Sendable {
   }
 
   static func retryDelay(_ value: String?, now: Date = Date()) -> TimeInterval {
-    guard let value else { return 15 }
-    if let seconds = Double(value), seconds.isFinite { return max(1, seconds) }
+    guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return 15 }
+    if let seconds = Double(value), seconds.isFinite { return min(3600, max(1, seconds)) }
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)
     formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
     guard let date = formatter.date(from: value) else { return 15 }
-    return max(1, date.timeIntervalSince(now))
+    let delay = date.timeIntervalSince(now)
+    return delay.isFinite ? min(3600, max(1, delay)) : 15
   }
 }
