@@ -14,9 +14,13 @@ enum Theme {
   static let danger = Color(red: 1.0, green: 0.46, blue: 0.46)
 }
 
+enum InternFocus: Hashable {
+  case search, workspace
+}
+
 struct InternView: View {
   @ObservedObject var model: InternModel
-  @FocusState private var focused: Bool
+  @FocusState private var focused: InternFocus?
 
   var body: some View {
     VStack(spacing: 0) {
@@ -24,6 +28,7 @@ struct InternView: View {
         .frame(height: InternPanelIntern.headerHeight)
       scopeBar
         .frame(height: InternPanelIntern.scopeHeight)
+      feedback
       Divider().overlay(Theme.border)
       content
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -31,7 +36,7 @@ struct InternView: View {
       StatsFooter(model: model)
         .frame(height: InternPanelIntern.footerHeight)
     }
-    .frame(width: InternPanelIntern.panelWidth)
+    .frame(maxWidth: InternPanelIntern.panelWidth)
     .frame(maxHeight: .infinity)
     .background {
       ZStack {
@@ -45,8 +50,19 @@ struct InternView: View {
         .strokeBorder(Theme.border, lineWidth: 1)
     )
     .preferredColorScheme(.dark)
-    .onAppear { focused = true }
-    .onChange(of: model.savingWorkspace) { _, saving in if !saving { focused = true } }
+    .onAppear { restoreFocus() }
+    .onChange(of: model.savingWorkspace) { _, _ in restoreFocus() }
+    .onChange(of: model.confirmation?.id) { _, _ in restoreFocus() }
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) {
+      notification in
+      if notification.object is KeyablePanel { restoreFocus() }
+    }
+  }
+
+  private func restoreFocus() {
+    DispatchQueue.main.async {
+      focused = model.confirmation != nil ? nil : model.savingWorkspace ? .workspace : .search
+    }
   }
 
   private var header: some View {
@@ -59,31 +75,56 @@ struct InternView: View {
         .textFieldStyle(.plain)
         .font(.system(size: 24, weight: .regular, design: .rounded))
         .foregroundStyle(Theme.text)
-        .focused($focused)
+        .focused($focused, equals: .search)
+        .disabled(model.savingWorkspace || model.confirmation != nil)
         .accessibilityLabel("Search apps, files, links and workspaces")
       if let error = model.lastError {
         Image(systemName: "exclamationmark.icloud")
           .foregroundStyle(Theme.warn)
           .help(error)
           .accessibilityLabel(error)
-      } else if model.isLocalOnly {
-        Image(systemName: "lock.shield")
-          .foregroundStyle(Theme.dim)
-          .help("Local search. Online ranking is disabled.")
       } else if let status = model.status {
         Image(systemName: "checkmark.circle")
           .foregroundStyle(Theme.ready)
           .help(status)
           .accessibilityLabel(status)
+      } else if model.isLocalOnly {
+        Image(systemName: "lock.shield")
+          .foregroundStyle(Theme.dim)
+          .help("Local search. Online ranking is disabled.")
+          .accessibilityLabel("Local search. Online ranking is disabled.")
       }
       Circle()
         .fill(Theme.accent)
         .frame(width: 6, height: 6)
-        .opacity(model.inFlight > 0 || model.isIndexing ? 1 : 0)
+        .opacity(model.inFlight > 0 || model.isIndexing || model.isExecuting ? 1 : 0)
         .animation(.easeOut(duration: 0.12), value: model.inFlight > 0)
-        .accessibilityHidden(true)
+        .accessibilityLabel(
+          model.isExecuting ? "Running action" : model.isIndexing ? "Indexing" : "Ranking results"
+        )
+        .accessibilityHidden(model.inFlight == 0 && !model.isIndexing && !model.isExecuting)
     }
     .padding(.horizontal, 22)
+  }
+
+  @ViewBuilder
+  private var feedback: some View {
+    if model.isExecuting || model.lastError != nil || model.status != nil {
+      let message = model.isExecuting ? "Running action…" : model.lastError ?? model.status ?? ""
+      Label(
+        message,
+        systemImage: model.isExecuting
+          ? "hourglass" : model.lastError != nil ? "exclamationmark.triangle" : "info.circle"
+      )
+      .font(.system(size: 12))
+      .foregroundStyle(model.lastError != nil && !model.isExecuting ? Theme.warn : Theme.dim)
+      .lineLimit(1)
+      .help(message)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.horizontal, 22)
+      .frame(height: InternPanelIntern.feedbackHeight)
+      .accessibilityElement(children: .combine)
+    }
   }
 
   private var scopeBar: some View {
@@ -91,6 +132,7 @@ struct InternView: View {
       ForEach(SearchScope.allCases) { scope in
         Button {
           model.scope = scope
+          focused = .search
         } label: {
           Text(scope.rawValue)
             .font(.system(size: 12, weight: .medium))
@@ -102,6 +144,7 @@ struct InternView: View {
               in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .disabled(model.savingWorkspace || model.confirmation != nil)
         .help("Filter to \(scope.rawValue.lowercased()). Tab cycles filters.")
         .accessibilityAddTraits(model.scope == scope ? .isSelected : [])
       }
@@ -118,6 +161,7 @@ struct InternView: View {
           .foregroundStyle(Theme.dim)
         }
         .buttonStyle(.plain)
+        .disabled(model.savingWorkspace || model.confirmation != nil)
         .accessibilityLabel("Actions for selected result")
       }
     }
@@ -143,7 +187,7 @@ struct InternView: View {
       }
       .padding(24)
     } else if model.savingWorkspace {
-      WorkspaceEditor(model: model)
+      WorkspaceEditor(model: model, focused: $focused)
     } else if model.actionsVisible {
       ActionList(model: model)
     } else if model.isEmptyQuery && model.hits.isEmpty {
@@ -191,6 +235,10 @@ struct InternView: View {
                   model.select(index)
                   model.executeSelection()
                 }
+                .accessibilityAction {
+                  model.select(index)
+                  model.executeSelection()
+                }
               }
               .id(hit.id)
             }
@@ -202,6 +250,12 @@ struct InternView: View {
           if model.hits.indices.contains(selection) {
             proxy.scrollTo(model.hits[selection].id)
           }
+        }
+        .onChange(of: model.hits.map(\.id)) { _, _ in
+          if let hit = model.topHit { proxy.scrollTo(hit.id) }
+        }
+        .onAppear {
+          if let hit = model.topHit { proxy.scrollTo(hit.id) }
         }
       }
     }
@@ -231,6 +285,7 @@ struct HitRow: View {
   var body: some View {
     HStack(spacing: 14) {
       CandidateIcon(candidate: hit.candidate)
+        .accessibilityHidden(true)
       VStack(alignment: .leading, spacing: 2) {
         Text(hit.candidate.title)
           .font(.system(size: 15, weight: .medium, design: .rounded))
@@ -268,7 +323,11 @@ struct HitRow: View {
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
     .accessibilityLabel("\(hit.candidate.title), \(hit.candidate.kind.label)")
-    .accessibilityValue(selected ? "Selected" : "")
+    .accessibilityHint(hit.candidate.subtitle)
+    .accessibilityAddTraits(selected ? .isSelected : [])
+    .accessibilityValue(
+      [selected ? "Selected" : nil, pinned ? "Pinned" : nil].compactMap { $0 }.joined(
+        separator: ", "))
   }
 }
 
@@ -298,6 +357,9 @@ struct Confidence: View {
           .frame(width: 38, alignment: .trailing)
       }
       .opacity(stale ? 0.45 : 1)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel("Match confidence")
+      .accessibilityValue("\(percent) percent\(stale ? ", updating" : "")")
     }
   }
 }

@@ -4,30 +4,44 @@ import SwiftUI
 @main
 struct InternApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+  @Environment(\.openSettings) private var openSettings
 
   var body: some Scene {
     MenuBarExtra("Intern", systemImage: "bolt.fill") {
-      Button("Toggle Intern  ⌥Space") { delegate.togglePanel() }
+      Button(delegate.hotKeyError == nil ? "Toggle Intern  ⌥Space" : "Toggle Intern") {
+        delegate.togglePanel()
+      }
+      if let error = delegate.hotKeyError {
+        Text("Option-Space unavailable").help(error)
+      }
       Divider()
-      SettingsLink { Text("Settings…") }
+      Button("Settings…") {
+        delegate.prepareForSettings()
+        openSettings()
+        delegate.raiseSettings()
+      }
       Button("Quit Intern") { NSApplication.shared.terminate(nil) }
     }
     Settings {
-      SettingsView(model: delegate.model)
+      SettingsView(model: delegate.model, hotKeyError: delegate.hotKeyError)
+        .background(SettingsWindowReader { delegate.attachSettingsWindow($0) })
     }
   }
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
   let model = InternModel()
   private var panel: InternPanelIntern?
   private var hotKey: HotKey?
+  private weak var settingsWindow: NSWindow?
+  @Published private(set) var hotKeyError: String?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     guard NSClassFromString("XCTestCase") == nil else { return }
     panel = InternPanelIntern(model: model)
     hotKey = HotKey { [weak self] in self?.togglePanel() }
+    hotKeyError = hotKey?.registrationError
     if ProcessInfo.processInfo.arguments.contains("--show") {
       togglePanel()
     }
@@ -36,10 +50,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func togglePanel() {
     panel?.toggle()
   }
+
+  func prepareForSettings() {
+    panel?.hide()
+    NSApplication.shared.activate()
+  }
+
+  func attachSettingsWindow(_ window: NSWindow) {
+    settingsWindow = window
+    raiseSettings()
+  }
+
+  func raiseSettings() {
+    guard let settingsWindow else { return }
+    NSApplication.shared.activate()
+    settingsWindow.deminiaturize(nil)
+    settingsWindow.makeKeyAndOrderFront(nil)
+  }
+}
+
+private struct SettingsWindowReader: NSViewRepresentable {
+  let onWindow: (NSWindow) -> Void
+
+  final class WindowView: NSView {
+    var onWindow: ((NSWindow) -> Void)?
+
+    override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      guard let window else { return }
+      DispatchQueue.main.async { [weak self, weak window] in
+        guard let self, let window, self.window === window else { return }
+        self.onWindow?(window)
+      }
+    }
+  }
+
+  func makeNSView(context: Context) -> WindowView {
+    let view = WindowView()
+    view.onWindow = onWindow
+    return view
+  }
+
+  func updateNSView(_ nsView: WindowView, context: Context) {
+    nsView.onWindow = onWindow
+  }
 }
 
 struct SettingsView: View {
   @ObservedObject var model: InternModel
+  var hotKeyError: String? = nil
   @AppStorage(JevClient.apiKeyDefaultsKey) private var apiKey = ""
   @AppStorage("includeSpotlight") private var includeSpotlight = true
   @AppStorage("includeChromeHistory") private var includeHistory = true
@@ -48,6 +107,13 @@ struct SettingsView: View {
 
   var body: some View {
     Form {
+      if let hotKeyError {
+        Section("Keyboard shortcut") {
+          Text(hotKeyError)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
       Section("TypeSafe") {
         SecureField("API key", text: $apiKey)
         Text(
