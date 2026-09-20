@@ -68,11 +68,14 @@ struct Candidate: Identifiable, Hashable, Codable, Sendable {
   let lastOpenedAt: Date?
   let addedAt: Date?
   let visitedAt: Date?
+  /// Browser visit count; a page visited often is a hub rather than one record inside it.
+  let visitCount: Int?
 
   init(
     id: String, title: String, subtitle: String, kind: ActionKind, keywords: [String] = [],
     payload: Payload, ageDays: Double? = nil, modifiedAt: Date? = nil,
-    lastOpenedAt: Date? = nil, addedAt: Date? = nil, visitedAt: Date? = nil
+    lastOpenedAt: Date? = nil, addedAt: Date? = nil, visitedAt: Date? = nil,
+    visitCount: Int? = nil
   ) {
     self.id = id
     self.title = title
@@ -85,6 +88,7 @@ struct Candidate: Identifiable, Hashable, Codable, Sendable {
     self.lastOpenedAt = lastOpenedAt
     self.addedAt = addedAt
     self.visitedAt = visitedAt
+    self.visitCount = visitCount
   }
 
   var isOpenable: Bool {

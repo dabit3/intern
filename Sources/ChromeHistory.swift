@@ -278,7 +278,8 @@ enum ChromeHistory {
     return Candidate(
       id: "url:\(entry.url.absoluteString)", title: title,
       subtitle: "\(host) · \(recency(ageDays))", kind: .openURL, keywords: keywords,
-      payload: .url(entry.url), ageDays: ageDays, visitedAt: entry.lastVisit)
+      payload: .url(entry.url), ageDays: ageDays, visitedAt: entry.lastVisit,
+      visitCount: entry.visitCount)
   }
 
   static func displayHost(_ url: URL) -> String {

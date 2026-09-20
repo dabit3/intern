@@ -35,7 +35,7 @@ The default suite is offline. Both live test classes skip unless `JEV_LIVE=1` an
 | `InternExperienceTests.swift` | Opened/added/modified evidence, scopes, bounded personal boosts, Spotlight path filtering, execution validation, copy formatting, persistent pins/workspaces, group editing, stale replies, manual selection, local-only mode, cooldowns and Empty Trash confirmation |
 | `LiveExperienceTests.swift` | Live Jev judgments over fixed candidate fixtures for last-opened PDFs, named workspaces and recently used file groups |
 | `LiveJevTests.swift` | Live API against the machine's real local index and browsing fixtures |
-| `RankingQualityTests.swift` | Typos, accents, exact names, structured file constraints, direct URLs, recency ordering and calendar windows |
+| `RankingQualityTests.swift` | Typos, accents, exact names, structured file constraints, direct URLs, hub links before deep links, recency ordering and calendar windows |
 | `IndexingQualityTests.swift` | Nested apps/files, bounded traversal, per-folder scan caps, searchable folder names, scan reuse and history stamps, privacy filters, Shortcut deadlines and read-only Chrome WAL/profile fixtures |
 | `StateQualityTests.swift` | Stale executions/replies, judgments kept fresh or stale across index changes, source preferences, malformed persisted state, workspace identity and advancing visit ages |
 | `ResponsivenessQualityTests.swift` | Allocation-free scoring parity, filler words while typing, first-word and habit ranking, learned aliases, exact-name tier, stale-judgment damping, debounced requests, judgment continuity, readiness agreement and the on-disk index |

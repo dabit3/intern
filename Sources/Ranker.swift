@@ -80,6 +80,8 @@ enum Ranker {
     }
   }
 
+  private typealias Scored = (candidate: Candidate, score: Double, age: Double)
+
   /// A candidate with its searchable text tokenized once, so each keystroke only compares.
   struct Entry: Sendable {
     let candidate: Candidate
@@ -145,7 +147,7 @@ enum Ranker {
     let limit = window == nil ? prefilterLimit : windowedPrefilterLimit
     let floor = window == nil ? minimumFuzzy : windowedMinimumFuzzy
 
-    var scored: [(candidate: Candidate, score: Double, age: Double)] = []
+    var scored: [Scored] = []
     let recency = FileRecency(query: trimmed)
     scored.reserveCapacity(min(entries.count, 256))
     for entry in entries where scope.includes(entry.candidate) {
@@ -200,6 +202,7 @@ enum Ranker {
       }
       return lhs.candidate.id < rhs.candidate.id
     }
+    if !hasRecency { preferHubs(&scored) }
     var candidates: [Candidate] = []
     var fuzzy: [String: Double] = [:]
     if scope == .all, let evaluation = Calculator.evaluate(trimmed) {
@@ -241,6 +244,40 @@ enum Ranker {
 
   private static func singular(_ word: String) -> String {
     word.hasSuffix("s") ? String(word.dropLast()) : word
+  }
+
+  /// For a site-level query the useful answer is the hub (a dashboard, a repository, an inbox),
+  /// not the record inside it that happened to be visited last. Among links with the same score,
+  /// shallower paths come first, then more often visited, then more recent. A deep link still wins
+  /// when its own words score higher. Only link rows move, each into a slot another link held, so
+  /// apps and files keep their places. Time-window queries skip this and stay newest first.
+  private static func preferHubs(_ scored: inout [Scored]) {
+    let slots = scored.indices.filter {
+      if case .url = scored[$0].candidate.payload { return true }
+      return false
+    }
+    guard slots.count > 1 else { return }
+    let links = slots.map { scored[$0] }.sorted { lhs, rhs in
+      if lhs.score != rhs.score { return lhs.score > rhs.score }
+      let (lhsDepth, rhsDepth) = (depth(lhs.candidate), depth(rhs.candidate))
+      if lhsDepth != rhsDepth { return lhsDepth < rhsDepth }
+      let (lhsVisits, rhsVisits) = (lhs.candidate.visitCount ?? 0, rhs.candidate.visitCount ?? 0)
+      if lhsVisits != rhsVisits { return lhsVisits > rhsVisits }
+      if lhs.age != rhs.age { return lhs.age < rhs.age }
+      if lhs.candidate.title != rhs.candidate.title {
+        return lhs.candidate.title < rhs.candidate.title
+      }
+      return lhs.candidate.id < rhs.candidate.id
+    }
+    for (slot, link) in zip(slots, links) { scored[slot] = link }
+  }
+
+  /// How far a link is from its site's front door: path segments, plus two for a query string
+  /// and one for a fragment.
+  static func depth(_ candidate: Candidate) -> Int {
+    guard case .url(let url) = candidate.payload else { return 0 }
+    let segments = url.pathComponents.filter { $0 != "/" }.count
+    return segments + (url.query == nil ? 0 : 2) + (url.fragment == nil ? 0 : 1)
   }
 
   private static func directURL(_ text: String) -> URL? {

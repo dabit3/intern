@@ -39,6 +39,55 @@ final class RankingQualityTests: XCTestCase {
       judgment: nil)
   }
 
+  private func link(
+    _ url: String, _ title: String, visited: Double, visits: Int = 1
+  ) -> Candidate {
+    let entry = ChromeHistory.Entry(
+      url: URL(string: url)!, title: title, lastVisit: now.addingTimeInterval(-visited),
+      visitCount: visits)
+    return ChromeHistory.candidate(for: entry, now: now)
+  }
+
+  private let stripe = "https://dashboard.stripe.com/acct_1Om98nD4cNvH28G6"
+
+  func testSiteLevelQueriesPreferTheHubOverTheLastVisitedDeepLink() {
+    let hub = link("\(stripe)/dashboard", "Dashboard · Stripe", visited: 2 * 86_400, visits: 120)
+    let deep = link(
+      "\(stripe)/coupons/ljMyDEpk?starting_after=promo_1UE8XhD4cNvH28G6wduAN7aq",
+      "Coupons · Stripe", visited: 3_600, visits: 2)
+    let payments = link("\(stripe)/payments", "Payments · Stripe", visited: 1_800, visits: 10)
+    for query in ["stripe dashboard", "stripe dash", "stripe"] {
+      XCTAssertEqual(hits(query, [deep, payments, hub]).first?.id, hub.id, query)
+    }
+    XCTAssertEqual(
+      Array(hits("stripe", [deep, payments, hub]).map(\.id).prefix(3)),
+      [hub.id, payments.id, deep.id])
+    XCTAssertEqual(Ranker.depth(hub), 2)
+    XCTAssertEqual(Ranker.depth(deep), 5)
+  }
+
+  func testDeepLinksStillWinWhenTheirOwnWordsMatch() {
+    let hub = link("\(stripe)/dashboard", "Dashboard · Stripe", visited: 2 * 86_400, visits: 120)
+    let deep = link(
+      "\(stripe)/coupons/ljMyDEpk?starting_after=promo_1UE8XhD4cNvH28G6wduAN7aq",
+      "Coupons · Stripe", visited: 3_600, visits: 2)
+    XCTAssertEqual(hits("stripe coupons", [hub, deep]).first?.id, deep.id)
+    XCTAssertEqual(hits("coupons", [hub, deep]).first?.id, deep.id)
+  }
+
+  func testTimeWindowQueriesStayNewestFirstAndOtherRowsKeepTheirPlaces() {
+    let hub = link("\(stripe)/dashboard", "Dashboard · Stripe", visited: 2 * 86_400, visits: 120)
+    let deep = link(
+      "\(stripe)/coupons/ljMyDEpk?starting_after=promo_1UE8XhD4cNvH28G6wduAN7aq",
+      "Coupons · Stripe", visited: 3_600, visits: 2)
+    XCTAssertEqual(
+      hits("stripe links from this week", [hub, deep]).map(\.id).prefix(2).map { $0 },
+      [deep.id, hub.id])
+    let notes = file("stripe-notes.pdf", modified: 3 * 3_600)
+    let mixed = hits("stripe", [deep, notes, hub]).map(\.id)
+    XCTAssertEqual(Array(mixed.prefix(3)), [hub.id, notes.id, deep.id])
+  }
+
   func testExactTitleSurvivesCrowdedKeywordMatchesAndBoosts() {
     let target = app("Notes")
     let distractors = (0..<450).map { file("Notes \($0).pdf") }
