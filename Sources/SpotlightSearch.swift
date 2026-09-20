@@ -38,6 +38,10 @@ final class SpotlightSearch {
   ) {
     stop()
     let generation = generation
+    guard Self.isWellFormed(predicate) else {
+      completion([])
+      return
+    }
     let query = NSMetadataQuery()
     query.searchScopes = [NSMetadataQueryUserHomeScope]
     query.predicate = predicate
@@ -161,13 +165,13 @@ final class SpotlightSearch {
           }))
     }
     if !words.isEmpty {
-      let names = words.prefix(6).map {
-        NSPredicate(format: "kMDItemFSName CONTAINS[cd] %@", $0)
-      }
-      predicates.append(NSCompoundPredicate(andPredicateWithSubpredicates: Array(names)))
+      predicates.append(
+        allOf(words.prefix(6).map { NSPredicate(format: "kMDItemFSName CONTAINS[cd] %@", $0) }))
     }
     if FileRecency(query: text) == .opened {
-      predicates.append(NSPredicate(format: "kMDItemLastUsedDate != nil"))
+      // Spotlight rejects `!= nil`; any real date is later than the distant past.
+      predicates.append(
+        NSPredicate(format: "kMDItemLastUsedDate >= %@", Date.distantPast as NSDate))
     }
     if let window {
       let dateKey: String
@@ -183,23 +187,43 @@ final class SpotlightSearch {
         ])
       }
       if FileRecency(query: text) == .added {
+        // Files without an added date fall back to their modification date. Spotlight has no
+        // `== nil`, so "no added date" is expressed as "not added after the distant past".
         predicates.append(
           anyOf([
             dates(dateKey),
             NSCompoundPredicate(andPredicateWithSubpredicates: [
-              NSPredicate(format: "kMDItemDateAdded == nil"), dates("kMDItemFSContentChangeDate"),
+              NSCompoundPredicate(
+                notPredicateWithSubpredicate: NSPredicate(
+                  format: "kMDItemDateAdded >= %@", Date.distantPast as NSDate)),
+              dates("kMDItemFSContentChangeDate"),
             ]),
           ]))
       } else {
         predicates.append(dates(dateKey))
       }
     }
-    return predicates.count == 1
-      ? predicates[0] : NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+    return allOf(predicates)
   }
 
   private static func anyOf(_ predicates: [NSPredicate]) -> NSPredicate {
     if predicates.count == 1 { return predicates[0] }
     return NSCompoundPredicate(orPredicateWithSubpredicates: predicates)
+  }
+
+  private static func allOf(_ predicates: [NSPredicate]) -> NSPredicate {
+    if predicates.count == 1 { return predicates[0] }
+    return NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
+  }
+
+  /// `NSMetadataQuery` throws an Objective-C exception for a compound predicate with fewer than
+  /// two subpredicates. Thrown inside a Swift task, that exception wedges the main actor and every
+  /// later continuation in the app, so no predicate reaches the query without this check.
+  static func isWellFormed(_ predicate: NSPredicate) -> Bool {
+    guard let compound = predicate as? NSCompoundPredicate else { return true }
+    let parts = compound.subpredicates.compactMap { $0 as? NSPredicate }
+    let minimum = compound.compoundPredicateType == .not ? 1 : 2
+    return parts.count == compound.subpredicates.count && parts.count >= minimum
+      && parts.allSatisfy(isWellFormed)
   }
 }

@@ -120,11 +120,29 @@ final class RetrievalTests: XCTestCase {
 
   @MainActor
   func testSpotlightPredicatesAreAcceptedByMetadataQuery() {
-    for text in ["pdf", "nebula", "the last pdf I opened", "folder", "pdf image nebula", "files"] {
+    // A scoped query rejects compound predicates with one subpredicate by throwing; a single
+    // word, a single type word and a lone time window each used to produce one.
+    for text in [
+      "pdf", "nebula", "ca", "the last pdf I opened", "folder", "pdf image nebula", "files",
+      "yesterday", "screenshots from today", "the pdf i just downloaded",
+    ] {
+      let predicate = SpotlightSearch.predicate(for: text)
+      XCTAssertTrue(SpotlightSearch.isWellFormed(predicate), text)
       let query = NSMetadataQuery()
-      query.predicate = SpotlightSearch.predicate(for: text)
+      query.searchScopes = [NSMetadataQueryUserHomeScope]
+      query.predicate = predicate
       XCTAssertNotNil(query.predicate)
     }
+    let recents = SpotlightSearch.recentlyUsedPredicate()
+    XCTAssertTrue(SpotlightSearch.isWellFormed(recents))
+    let query = NSMetadataQuery()
+    query.searchScopes = [NSMetadataQueryUserHomeScope]
+    query.predicate = recents
+    XCTAssertFalse(
+      SpotlightSearch.isWellFormed(
+        NSCompoundPredicate(andPredicateWithSubpredicates: [
+          NSPredicate(format: "kMDItemFSName CONTAINS[cd] %@", "ca")
+        ])))
   }
 
   func testValidationRejectsUnsafeAndMissingWorkspaceMembersBeforeOpening() {

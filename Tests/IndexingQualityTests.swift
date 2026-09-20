@@ -395,7 +395,9 @@ final class IndexingQualityTests: XCTestCase {
       ("files downloaded yesterday", "kMDItemDateAdded"),
     ] {
       let predicate = SpotlightSearch.predicate(for: text, now: now)
+      XCTAssertTrue(SpotlightSearch.isWellFormed(predicate), text)
       let query = NSMetadataQuery()
+      query.searchScopes = [NSMetadataQueryUserHomeScope]
       query.predicate = predicate
       XCTAssertNotNil(query.predicate)
       let format = predicate.predicateFormat
