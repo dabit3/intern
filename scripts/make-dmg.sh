@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 fail() { printf '%s\n' "$*" >&2; exit 1; }
 if [ "${1:-}" = --help ]; then
   printf '%s\n' 'Usage: scripts/make-dmg.sh [output.dmg]' \
-    'RELEASE_VERSION (default: 0.1.2), RELEASE_BUILD (default: 3)' \
+    'RELEASE_VERSION (default: 0.1.3), RELEASE_BUILD (default: 4)' \
     'SIGNING_IDENTITY: Developer ID Application identity, or - for a local ad-hoc build.' \
     'NOTARY_PROFILE: notarytool Keychain profile. Requires SIGNING_IDENTITY.' \
     'Without NOTARY_PROFILE, the build is not notarized. Existing outputs are never replaced.'
@@ -26,8 +26,8 @@ for FILE in "$OUT" "$OUT.sha256"; do
   [ ! -e "$FILE" ] && [ ! -L "$FILE" ] || fail "Output already exists: $FILE"
 done
 
-VERSION="${RELEASE_VERSION:-0.1.2}"
-BUILD_NUMBER="${RELEASE_BUILD:-3}"
+VERSION="${RELEASE_VERSION:-0.1.3}"
+BUILD_NUMBER="${RELEASE_BUILD:-4}"
 IDENTITY="${SIGNING_IDENTITY:--}"
 PROFILE="${NOTARY_PROFILE:-}"
 awk -v version="$VERSION" 'BEGIN {exit(version ~ /^[0-9]+[.][0-9]+[.][0-9]+$/ ? 0 : 1)}' \
