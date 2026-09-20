@@ -68,6 +68,9 @@ final class InternModel: ObservableObject {
   }
   private var recentsRefreshed = Date.distantPast
   static let recentsInterval: TimeInterval = 30
+  private var persistedIDs: Set<String> = []
+  private var persistedAt = Date.distantPast
+  static let persistInterval: TimeInterval = 300
   private var libraryCandidates: [Candidate] = [] {
     didSet { mergedEntries = nil }
   }
@@ -311,13 +314,21 @@ final class InternModel: ObservableObject {
       let built = await buildIndex(includeHistory)
       guard let self, !Task.isCancelled, generation == self.indexGeneration else { return }
       self.isIndexing = false
-      let changed = built.candidates != self.index
       self.replaceIndex(built.candidates)
-      if let indexStore, changed, !built.candidates.isEmpty {
-        let candidates = built.candidates
-        Task.detached(priority: .utility) { indexStore.save(candidates) }
-      }
+      self.persistIndexIfNeeded(built.candidates)
     }
+  }
+
+  /// Recency wording changes on every rebuild, so only a changed set of items (or five minutes)
+  /// is worth writing the index to disk again.
+  private func persistIndexIfNeeded(_ candidates: [Candidate]) {
+    guard let indexStore, !candidates.isEmpty else { return }
+    let ids = Set(candidates.map(\.id))
+    guard ids != persistedIDs || Date().timeIntervalSince(persistedAt) >= Self.persistInterval
+    else { return }
+    persistedIDs = ids
+    persistedAt = Date()
+    Task.detached(priority: .utility) { indexStore.save(candidates) }
   }
 
   func replaceIndex(_ candidates: [Candidate]) {
