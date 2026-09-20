@@ -384,8 +384,13 @@ final class InternModel: ObservableObject {
   func copySelection() {
     guard let candidate = topHit?.candidate, let text = Executor.copyText(candidate) else { return }
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(text, forType: .string)
     actionsVisible = false
+    guard NSPasteboard.general.setString(text, forType: .string) else {
+      status = nil
+      lastError = "Couldn't write to the clipboard. Try again."
+      return
+    }
+    lastError = nil
     status = "Copied"
   }
 

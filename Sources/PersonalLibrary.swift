@@ -250,7 +250,8 @@ final class PersonalLibrary: ObservableObject {
     case .url(let url):
       return Candidate(
         id: candidate.id, title: candidate.title, subtitle: "\(url.host ?? "") · Saved link",
-        kind: candidate.kind, keywords: candidate.keywords, payload: candidate.payload)
+        kind: candidate.kind, keywords: candidate.keywords, payload: candidate.payload,
+        visitedAt: candidate.visitedAt)
     case .group(let members):
       return Candidate(
         id: candidate.id, title: candidate.title, subtitle: candidate.subtitle,
