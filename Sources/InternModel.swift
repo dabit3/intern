@@ -609,7 +609,7 @@ final class InternModel: ObservableObject {
       }
       return
     }
-    guard query.utf8.count <= 2_048 else {
+    guard query.utf8.count <= JevQuestions.maxQueryBytes else {
       lastError = "Query is too long for online ranking. Local results are available."
       return
     }

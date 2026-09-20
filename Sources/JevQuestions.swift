@@ -178,6 +178,7 @@ enum JevQuestions {
   static let model = "jev-latest"
   static let noneOption = "none"
   static let maxCandidates = 32
+  static let maxQueryBytes = 2_048
   static let scopeOne = "one"
   static let scopeAll = "all"
 
@@ -192,7 +193,7 @@ enum JevQuestions {
   )
     -> JevRequest
   {
-    let query = bounded(query, bytes: 2048)
+    let query = bounded(query, bytes: maxQueryBytes)
     let shown = Array(candidates.prefix(maxCandidates))
     var summaries: [JevRequest.State.CandidateSummary] = []
     var targetCriteria: [String: String] = [:]
@@ -294,7 +295,7 @@ enum JevQuestions {
       age = candidate.age(for: intent, now: now)
     case .url:
       basis = "visited"
-      age = candidate.ageDays
+      age = candidate.age(for: .modified, now: now)
     default: return nil
     }
     guard let age, age.isFinite, age >= 0,

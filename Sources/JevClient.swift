@@ -50,7 +50,6 @@ struct JevClient: Sendable {
       configuration.timeoutIntervalForRequest = Self.requestTimeout
       configuration.timeoutIntervalForResource = Self.requestTimeout
       configuration.httpMaximumConnectionsPerHost = 8
-      configuration.httpShouldUsePipelining = true
       configuration.httpShouldSetCookies = false
       configuration.urlCache = nil
       self.session = URLSession(configuration: configuration)

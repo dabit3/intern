@@ -101,7 +101,7 @@ The fuzzy matcher gets plausible PDFs into the shortlist. Jev compares their add
 2. **Chrome history, in code.** `ChromeHistory` copies each profile's `History` SQLite file (Chrome keeps the original locked), reads the last 90 days of `urls`, keeps `http(s)` only, merges duplicates across profiles and turns each row into a candidate: page title, host, `visited 2 h ago`, plus host and title words as keywords. Only the rows that survive the window and the fuzzy filter are sent (up to 30 with a window, 13 without). The database never leaves the machine.
 3. **Two extra questions in the same request.** `scope` is a Choice between `one` (a specific item) and `all` (every candidate that fits). `match_cN` is one Noul per real candidate: does this row fit the description? This is the [rerank pattern](https://docs.typesafe.ai/cookbooks/rerank_typesafe) from the TypeSafe cookbooks. Both come back in the same round trip as `target`, `action` and `ready`.
 4. **Group row, in code.** Rows with `match ≥ 0.6` (at least two, at most 25) form the set. The panel adds a synthetic `Open all 3 links` row: first when `P(all) ≥ 0.5`, right under the best single hit when Jev is torn (`0.15 ≤ P(all) < 0.5`), and not at all when the query is clearly about one thing (`P(all) < 0.15`). Members get a checkmark; ↓ still walks through them one by one. The group row is ready only when `P(all) ≥ 0.75`.
-5. **Enter opens them.** URL groups go to Chrome in one `NSWorkspace.open(_:withApplicationAt:)` call (default browser if Chrome is not installed); other members run through the normal single-item path. Nothing runs without Enter.
+5. **Enter opens them.** URLs use their registered browser, with group members batched by application handler; other members run through the normal single-item path. Nothing runs without Enter.
 
 The same machinery is not Chrome-specific. `the files I used in the last hour` can offer an `Open all` row over files with matching last-opened evidence, with older files excluded before Jev sees them. Mixed sets (`Open all 4 items`) work too. Membership checkboxes remain editable while an answer is in flight, and a new answer does not overwrite those choices.
 
@@ -189,13 +189,13 @@ The `ready` wording went through several rounds against the five queries plus de
 - **Personal library** (`PersonalLibrary.swift`): at most 200 local records, eight query aliases per record and 20 workspaces, persisted as Codable data in `UserDefaults` under `launcher.library.v1`. No file contents are stored.
 - **Time windows** (`TimeWindow.swift`): relative (`past 24 hours`, `last 3 days`, `a couple of weeks ago`), named (`today`, `yesterday`, `this week`, `last month`, `this morning`, `tonight`, `last night`, `just now`, `recently`) and number words, resolved against the local calendar.
 - **System toggles** (`Executor.swift`): Dark Mode (AppleScript to System Events), Wi-Fi on/off (`networksetup -setairportpower`), Do Not Disturb (opens Focus settings), Sleep (AppleScript), Lock Screen (`CGSession -suspend`), Empty Trash (AppleScript to Finder), Show/Hide hidden files (`defaults write` plus `killall Finder`).
-- **Calculator** (`Calculator.swift`): a recursive-descent parser for `+ - * / ^ ( )`, `x` as multiply, `sqrt`, percentages (`15% of 240`, `200 * 10%`), with an optional `calc` or `=` prefix. No `NSExpression`, no eval.
-- **Fuzzy prefilter** (`Fuzzy.swift`): exact, prefix, word-initial and subsequence scoring over title and keywords, with natural-language filler (`the`, `open`, `pages`, `about`, `read`, and so on) stripped so it never crowds out the words that matter.
-- **Execution**: `NSWorkspace.open` for apps, files and web searches; URLs and URL groups go to Chrome when installed (default browser otherwise), passed as values, never through a shell; the calculator result is copied to the clipboard.
+- **Calculator** (`Calculator.swift`): a bounded recursive-descent parser for `+ - * / ^ ( )`, Unicode operators (`− × ÷ √`), scientific notation, implicit multiplication, `sqrt`, and percentages (`15% of 240`, `200 * 10%`), with an optional `calc` or `=` prefix. No `NSExpression`, no eval.
+- **Fuzzy prefilter** (`Fuzzy.swift`): exact, prefix, word-initial, single-edit typo and subsequence scoring over normalized titles and keywords. File-type constraints and query-relevant recency preserve useful candidates before online ranking; natural-language filler is stripped.
+- **Execution**: `NSWorkspace.open` for apps, files and web searches; URLs and URL groups use their registered browser, passed as values, never through a shell. Group members are validated and deduplicated before opening. The calculator result is copied to the clipboard; subprocess actions have cancellation, timeout and output bounds.
 
 ## Run
 
-Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) only if you change `project.yml` (the generated project is committed).
+Requirements: macOS 14 or later, Xcode 16 or later (built with 26.6), a TypeSafe API key for online ranking, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) if you change `project.yml` or add/remove source or test files (the generated project is committed).
 
 ```sh
 git clone https://github.com/dabit3/intern.git
@@ -231,7 +231,7 @@ Debug builds appear as `Intern Dev` in macOS permission prompts and use separate
 
 The request contains the query, short candidate titles/details, query-relevant file ages and limited context. Details can include folder names, browser hosts and workspace member names. File contents, clipboard text, the complete index and raw browser databases stay local. Local-only mode disables Jev requests; pinning, workspaces, previews, calculations and manual groups still work.
 
-Errors appear as a compact header icon with a tooltip. Missing keys, HTTP errors, timeouts and transport failures preserve local results. HTTP 429 and 529 pause new requests, honor `Retry-After` when supplied, and use increasing cooldowns for repeated limits. Enter remains explicit even when Jev reports high confidence. File existence, URL schemes and group eligibility are validated before execution.
+Errors and action feedback appear in a compact status line. Missing keys, HTTP errors, timeouts, malformed rankings and transport failures preserve local results. Queries over 2,048 UTF-8 bytes remain local rather than sending a truncated intent. HTTP 429 and 529 pause new requests, honor bounded `Retry-After` values when supplied, and use increasing cooldowns for repeated limits. Enter remains explicit even when Jev reports high confidence. File existence, URL schemes and group eligibility are validated before execution.
 
 ### Permissions
 

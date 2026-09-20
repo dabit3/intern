@@ -48,6 +48,10 @@ enum Ranker {
   ]
   private static let fileWords: Set<String> = ["file", "files", "document", "documents"]
   private static let linkWords: Set<String> = ["link", "links", "page", "pages", "site", "sites"]
+  private static let fileExtensions = Set(fileTypes.values.flatMap { $0 }).union([
+    "doc", "docx", "odt", "rtf", "rtfd", "txt", "md", "swift", "json", "app",
+    "html", "css", "js", "ts", "py", "rb", "sh", "yml", "yaml", "xml", "plist",
+  ])
 
   /// Jev must lean at least this far toward "all" before the group row leads the list.
   static let setThreshold = 0.5
@@ -181,7 +185,9 @@ enum Ranker {
       id: webSearchID, title: "Search the web for “\(trimmed)”",
       subtitle: "Opens your default browser", kind: .webSearch, payload: .webSearch(trimmed))
     if scope == .all || scope == .links {
-      if let url = directURL(trimmed) {
+      if let url = directURL(trimmed),
+        !candidates.contains(where: { $0.kind != .openURL && fuzzy[$0.id] == 1 })
+      {
         let id = "url:\(url.absoluteString)"
         candidates.removeAll { $0.id == id }
         candidates.insert(
@@ -207,6 +213,7 @@ enum Ranker {
       let scheme = components.scheme?.lowercased(), ["http", "https"].contains(scheme),
       components.user == nil, components.password == nil,
       let host = components.host, !host.isEmpty,
+      components.port.map({ (1...65_535).contains($0) }) ?? true,
       let url = components.url
     else { return nil }
     if !explicit {
@@ -214,7 +221,7 @@ enum Ranker {
       guard labels.count >= 2, labels.allSatisfy({ !$0.isEmpty }),
         let suffix = labels.last, suffix.count >= 2,
         suffix.allSatisfy(\.isLetter),
-        !["pdf", "txt", "md", "swift", "json", "csv", "png", "jpg", "app"].contains(suffix)
+        !fileExtensions.contains(suffix.lowercased())
       else { return nil }
     }
     return url
@@ -299,15 +306,16 @@ enum Ranker {
     let kind = kinds.count == 1 ? kinds.first! : .unclear
     let noun: String
     switch kind {
-    case .openURL: noun = "links"
-    case .openFile: noun = "files"
-    case .openApp: noun = "apps"
-    default: noun = "items"
+    case .openURL: noun = "link"
+    case .openFile: noun = "file"
+    case .openApp: noun = "app"
+    default: noun = "item"
     }
     let names = members.prefix(3).map(\.title).joined(separator: ", ")
     let more = members.count > 3 ? " and \(members.count - 3) more" : ""
     return Candidate(
-      id: groupID, title: "Open all \(members.count) \(noun)",
+      id: groupID,
+      title: members.count == 1 ? "Open 1 \(noun)" : "Open all \(members.count) \(noun)s",
       subtitle: names + more, kind: kind, payload: .group(members))
   }
 }

@@ -30,12 +30,28 @@ enum Fuzzy {
     let all: [String]
     let meaningful: [String]
     let directed: [String]
+    let joined: String
+    let weightedMeaningful: [(text: String, count: Int, length: Int)]
+    let weightedDirected: [(text: String, count: Int, length: Int)]
 
     init(_ text: String) {
       all = tokens(text)
       let filtered = all.filter { !stopwords.contains($0) }
       meaningful = filtered.isEmpty ? all : filtered
       directed = all.filter { !stopwords.contains($0) || $0 == "on" || $0 == "show" }
+      joined = all.joined()
+      weightedMeaningful = Self.weighted(meaningful)
+      weightedDirected = Self.weighted(directed)
+    }
+
+    private static func weighted(_ words: [String]) -> [(text: String, count: Int, length: Int)] {
+      var counts: [String: Int] = [:]
+      var ordered: [String] = []
+      for word in words {
+        if counts[word] == nil { ordered.append(word) }
+        counts[word, default: 0] += 1
+      }
+      return ordered.map { ($0, counts[$0, default: 0], $0.count) }
     }
   }
 
@@ -52,7 +68,7 @@ enum Fuzzy {
     let exact = exactQuery ?? query
     let exactWords = candidate.kind == .systemToggle ? exact.directed : exact.meaningful
     if exact.all == titleTokens || exactWords == titleTokens
-      || exact.all.joined() == joinedTitle
+      || exact.joined == joinedTitle
     {
       return 1
     }
@@ -62,11 +78,14 @@ enum Fuzzy {
 
     var total = 0.0
     var unmatched = 0
-    for token in meaningful {
+    let weighted =
+      candidate.kind == .systemToggle ? query.weightedDirected : query.weightedMeaningful
+    for token in weighted {
       let best = bestMatch(
-        token: token, terms: terms, joinedTitle: joinedTitle, initials: initials)
-      if best == 0 { unmatched += 1 }
-      total += best
+        token: token.text, length: token.length, terms: terms, joinedTitle: joinedTitle,
+        initials: initials)
+      if best == 0 { unmatched += token.count }
+      total += best * Double(token.count)
     }
     guard total > 0 else { return 0 }
     var score = total / Double(meaningful.count)
@@ -75,10 +94,15 @@ enum Fuzzy {
   }
 
   private static func bestMatch(
-    token: String, terms: [String], joinedTitle: String, initials: String
+    token: String, length: Int, terms: [String], joinedTitle: String, initials: String
   )
     -> Double
   {
+    guard
+      length <= joinedTitle.utf8.count || terms.contains(where: { length <= $0.utf8.count + 1 })
+    else {
+      return 0
+    }
     var best = 0.0
     for term in terms {
       if term == token {
@@ -88,29 +112,29 @@ enum Fuzzy {
         best = max(best, 0.88)
       }
       if term.hasPrefix(token) {
-        best = max(best, 0.72 + 0.15 * Double(token.count) / Double(term.count))
+        best = max(best, 0.72 + 0.15 * Double(length) / Double(term.count))
       }
     }
     if best > 0 { return best }
-    if token.count >= 2, initials.hasPrefix(token) {
+    if length >= 2, initials.hasPrefix(token) {
       return 0.7
     }
     if joinedTitle.contains(token) {
       return 0.55
     }
-    if token.count >= 4,
-      terms.contains(where: { $0.count >= 4 && isSingleEdit(token, $0) })
+    if length >= 4,
+      terms.contains(where: { $0.count >= 4 && isSingleEdit(token, length: length, $0) })
     {
       return 0.65
     }
-    if token.count >= 3, let contiguity = subsequenceContiguity(token, in: joinedTitle) {
+    if length >= 3, let contiguity = subsequenceContiguity(token, in: joinedTitle) {
       return 0.2 + 0.2 * contiguity
     }
     return 0
   }
 
-  private static func isSingleEdit(_ lhs: String, _ rhs: String) -> Bool {
-    guard abs(lhs.count - rhs.count) <= 1 else { return false }
+  private static func isSingleEdit(_ lhs: String, length: Int, _ rhs: String) -> Bool {
+    guard abs(length - rhs.count) <= 1 else { return false }
     let a = Array(lhs)
     let b = Array(rhs)
     if a.count == b.count {
