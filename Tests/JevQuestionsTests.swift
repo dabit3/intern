@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 final class JevQuestionsTests: XCTestCase {
   let context = LaunchContext(

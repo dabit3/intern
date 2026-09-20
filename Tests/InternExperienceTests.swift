@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 final class RetrievalTests: XCTestCase {
   func testRequestPreservesPreciseRecencyAndItsActualSource() {
@@ -234,7 +234,7 @@ private actor PendingJudgments {
 }
 
 @MainActor
-final class LauncherConcurrencyTests: XCTestCase {
+final class InternConcurrencyTests: XCTestCase {
   private func waitUntil(_ condition: () async -> Bool) async {
     for _ in 0..<100 {
       if await condition() { return }
@@ -244,12 +244,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testOlderQueryAndHiddenPanelRejectLateResponses() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
     let pending = PendingJudgments()
-    let model = LauncherModel(defaults: defaults) { try await pending.ask($0) }
+    let model = InternModel(defaults: defaults) { try await pending.ask($0) }
     model.replaceIndex(Fixtures.index)
     model.query = "dark"
     await waitUntil { await pending.contains("dark") }
@@ -267,12 +267,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testManualSelectionAndGroupEditSurviveFreshRanking() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
     let pending = PendingJudgments()
-    let model = LauncherModel(defaults: defaults) { try await pending.ask($0) }
+    let model = InternModel(defaults: defaults) { try await pending.ask($0) }
     model.replaceIndex([Fixtures.roadmap, Fixtures.invoice])
     model.query = "pdf"
     await waitUntil { await pending.contains("pdf") }
@@ -289,13 +289,13 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testLocalModeUsesNoNetworkAndStillOffersCalculation() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(true, forKey: "localOnly")
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
     let pending = PendingJudgments()
-    let model = LauncherModel(defaults: defaults) { try await pending.ask($0) }
+    let model = InternModel(defaults: defaults) { try await pending.ask($0) }
     model.query = "15% of 240"
     XCTAssertEqual(model.topHit?.candidate.title, "= 36")
     XCTAssertEqual(model.inFlight, 0)
@@ -304,12 +304,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testEmptyTrashNeedsAnAdditionalExplicitConfirmation() throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(true, forKey: "localOnly")
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
-    let model = LauncherModel(defaults: defaults)
+    let model = InternModel(defaults: defaults)
     model.replaceIndex([SystemToggle.emptyTrash.candidate])
     model.query = "empty trash"
     model.executeSelection()
@@ -320,12 +320,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testSavedWorkspaceCanBeReviewedWithoutOpeningAnyMember() throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(true, forKey: "localOnly")
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
-    let model = LauncherModel(defaults: defaults)
+    let model = InternModel(defaults: defaults)
     let workspace = PersonalLibrary.Workspace(
       id: "workspace:test", name: "Research", members: [Fixtures.roadmap, Fixtures.safari])
     model.replaceIndex([workspace.candidate])
@@ -343,11 +343,11 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testFailureFallsBackAndRateLimitSuppressesSubsequentRequests() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
-    let model = LauncherModel(defaults: defaults) { _ in throw JevClient.Failure.rateLimited(60) }
+    let model = InternModel(defaults: defaults) { _ in throw JevClient.Failure.rateLimited(60) }
     model.replaceIndex(Fixtures.index)
     model.query = "dark"
     await waitUntil { model.lastError != nil }
@@ -360,12 +360,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testLocalOnlySwitchInvalidatesAnOutstandingJudgment() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
     let pending = PendingJudgments()
-    let model = LauncherModel(defaults: defaults) { try await pending.ask($0) }
+    let model = InternModel(defaults: defaults) { try await pending.ask($0) }
     model.replaceIndex(Fixtures.index)
     model.query = "dark"
     await waitUntil { await pending.contains("dark") }
@@ -379,14 +379,14 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testLateExecutionRecordsOriginalQueryWithoutClosingNewSearch() async throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(true, forKey: "localOnly")
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
     var finish: CheckedContinuation<Executor.Outcome, Never>?
     var executed: [String] = []
-    let model = LauncherModel(
+    let model = InternModel(
       defaults: defaults,
       execute: { candidate in
         executed.append(candidate.id)
@@ -410,12 +410,12 @@ final class LauncherConcurrencyTests: XCTestCase {
   }
 
   func testKeyboardActionsRoutePreviewAndPinForSelectedFile() throws {
-    let suite = "LauncherTests.\(UUID())"
+    let suite = "InternTests.\(UUID())"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
     defaults.set(true, forKey: "localOnly")
     defaults.set(false, forKey: "includeSpotlight")
     defer { defaults.removePersistentDomain(forName: suite) }
-    let model = LauncherModel(defaults: defaults)
+    let model = InternModel(defaults: defaults)
     model.replaceIndex([Fixtures.roadmap])
     model.query = "roadmap"
     var previewed: URL?

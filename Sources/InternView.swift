@@ -14,24 +14,24 @@ enum Theme {
   static let danger = Color(red: 1.0, green: 0.46, blue: 0.46)
 }
 
-struct LauncherView: View {
-  @ObservedObject var model: LauncherModel
+struct InternView: View {
+  @ObservedObject var model: InternModel
   @FocusState private var focused: Bool
 
   var body: some View {
     VStack(spacing: 0) {
       header
-        .frame(height: LauncherPanelController.headerHeight)
+        .frame(height: InternPanelIntern.headerHeight)
       scopeBar
-        .frame(height: LauncherPanelController.scopeHeight)
+        .frame(height: InternPanelIntern.scopeHeight)
       Divider().overlay(Theme.border)
       content
         .frame(maxWidth: .infinity, maxHeight: .infinity)
       Divider().overlay(Theme.border)
       StatsFooter(model: model)
-        .frame(height: LauncherPanelController.footerHeight)
+        .frame(height: InternPanelIntern.footerHeight)
     }
-    .frame(width: LauncherPanelController.panelWidth)
+    .frame(width: InternPanelIntern.panelWidth)
     .frame(maxHeight: .infinity)
     .background {
       ZStack {
@@ -169,7 +169,7 @@ struct LauncherView: View {
                     Image(systemName: hit.inSet ? "checkmark.circle.fill" : "circle")
                       .foregroundStyle(hit.inSet ? Theme.accent : Theme.faint)
                       .font(.system(size: 17))
-                      .frame(width: 30, height: LauncherPanelController.rowHeight)
+                      .frame(width: 30, height: InternPanelIntern.rowHeight)
                   }
                   .buttonStyle(.plain)
                   .accessibilityLabel(
@@ -181,7 +181,7 @@ struct LauncherView: View {
                   stale: !model.judgmentIsFresh && hit.jevProbability != nil,
                   pinned: model.library.isPinned(hit.candidate)
                 )
-                .frame(height: LauncherPanelController.rowHeight)
+                .frame(height: InternPanelIntern.rowHeight)
                 .onTapGesture(count: 2) {
                   model.select(index)
                   model.executeSelection()
@@ -365,7 +365,7 @@ struct CandidateIcon: View {
 }
 
 struct EmptyHint: View {
-  @ObservedObject var model: LauncherModel
+  @ObservedObject var model: InternModel
   private let examples = [
     "the pdf I just downloaded", "links I visited today", "15% of 240",
   ]
@@ -404,7 +404,7 @@ struct EmptyHint: View {
 /// Two numbers, nothing else: the last round-trip on the left, the running cost on the right.
 /// Everything else (p50/p95, decisions, tokens) lives in the hover tooltip.
 struct StatsFooter: View {
-  @ObservedObject var model: LauncherModel
+  @ObservedObject var model: InternModel
 
   var body: some View {
     let stats = model.stats

@@ -1,7 +1,7 @@
 import SQLite3
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 enum HistoryFixtures {
   static let now = Date(timeIntervalSince1970: 1_790_000_000)

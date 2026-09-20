@@ -114,7 +114,7 @@ h1 {
   transform: translateY(0.03em);
 }
 
-/* Launcher panel — a faithful HTML/CSS recreation of the real window.
+/* Intern panel — a faithful HTML/CSS recreation of the real window.
    --u is 1px at 680pt and scales down proportionally on narrow screens. */
 
 .panel {

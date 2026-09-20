@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 enum Fixtures {
   static let darkMode = Candidate(

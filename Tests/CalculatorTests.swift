@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 final class CalculatorTests: XCTestCase {
   func testBasicArithmeticAndPrecedence() {

@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import Launcher
+@testable import Intern
 
 /// End-to-end probes against the real API over the real local index. Skipped unless
 /// `TYPESAFE_API_KEY` is set and `JEV_LIVE=1`, so the default suite stays offline.
@@ -59,7 +59,7 @@ final class LiveJevTests: XCTestCase {
     guard case .group(let members) = top.candidate.payload else { return XCTFail() }
     XCTAssertEqual(members.count, 3)
     XCTAssertTrue(members.allSatisfy { $0.title.localizedCaseInsensitiveContains("ambassador") })
-    let certain = await MainActor.run { LauncherModel.certainSetThreshold }
+    let certain = await MainActor.run { InternModel.certainSetThreshold }
     XCTAssertGreaterThanOrEqual(judgment.setProbability, certain)
   }
 

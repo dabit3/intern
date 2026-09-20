@@ -2,15 +2,15 @@ import AppKit
 import SwiftUI
 
 @main
-struct LauncherApp: App {
+struct InternApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
   var body: some Scene {
-    MenuBarExtra("Launcher", systemImage: "bolt.fill") {
-      Button("Toggle Launcher  ⌥Space") { delegate.togglePanel() }
+    MenuBarExtra("Intern", systemImage: "bolt.fill") {
+      Button("Toggle Intern  ⌥Space") { delegate.togglePanel() }
       Divider()
       SettingsLink { Text("Settings…") }
-      Button("Quit Launcher") { NSApplication.shared.terminate(nil) }
+      Button("Quit Intern") { NSApplication.shared.terminate(nil) }
     }
     Settings {
       SettingsView(model: delegate.model)
@@ -20,12 +20,12 @@ struct LauncherApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-  let model = LauncherModel()
-  private var panel: LauncherPanelController?
+  let model = InternModel()
+  private var panel: InternPanelIntern?
   private var hotKey: HotKey?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-    panel = LauncherPanelController(model: model)
+    panel = InternPanelIntern(model: model)
     hotKey = HotKey { [weak self] in self?.togglePanel() }
     if ProcessInfo.processInfo.arguments.contains("--show") {
       togglePanel()
@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 struct SettingsView: View {
-  @ObservedObject var model: LauncherModel
+  @ObservedObject var model: InternModel
   @AppStorage(JevClient.apiKeyDefaultsKey) private var apiKey = ""
   @AppStorage("includeSpotlight") private var includeSpotlight = true
   @AppStorage("includeChromeHistory") private var includeHistory = true

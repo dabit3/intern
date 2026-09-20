@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum LauncherAction: String, Identifiable {
+enum InternAction: String, Identifiable {
   case open, preview, reveal, copy, pin, member, reviewGroup, saveWorkspace, deleteWorkspace
   var id: String { rawValue }
 
@@ -46,7 +46,7 @@ enum LauncherAction: String, Identifiable {
 }
 
 struct ActionList: View {
-  @ObservedObject var model: LauncherModel
+  @ObservedObject var model: InternModel
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -69,7 +69,7 @@ struct ActionList: View {
     }
   }
 
-  private func actionRow(_ action: LauncherAction, index: Int, candidate: Candidate) -> some View {
+  private func actionRow(_ action: InternAction, index: Int, candidate: Candidate) -> some View {
     let title = action == .pin && model.library.isPinned(candidate) ? "Unpin" : action.title
     return Button {
       model.performAction(action)
@@ -94,7 +94,7 @@ struct ActionList: View {
 }
 
 struct WorkspaceEditor: View {
-  @ObservedObject var model: LauncherModel
+  @ObservedObject var model: InternModel
   @FocusState private var focused: Bool
 
   var body: some View {

@@ -1,4 +1,4 @@
-name: Launcher
+name: Intern
 options:
   bundleIdPrefix: com.devin.typesafe
   deploymentTarget:
@@ -12,7 +12,7 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     SWIFT_STRICT_CONCURRENCY: complete
 targets:
-  Launcher:
+  Intern:
     type: application
     platform: macOS
     sources:
@@ -20,29 +20,29 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.devin.typesafe.jev-launcher
-        INFOPLIST_KEY_CFBundleDisplayName: Launcher
+        INFOPLIST_KEY_CFBundleDisplayName: Intern
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSAppleEventsUsageDescription: Launcher sends Apple Events to System Events and Finder to run system toggles such as Dark Mode, Sleep and Empty Trash.
+        INFOPLIST_KEY_NSAppleEventsUsageDescription: Intern sends Apple Events to System Events and Finder to run system toggles such as Dark Mode, Sleep and Empty Trash.
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         ENABLE_APP_SANDBOX: NO
         ENABLE_HARDENED_RUNTIME: NO
-  LauncherTests:
+  InternTests:
     type: bundle.unit-test
     platform: macOS
     sources:
       - Tests
     dependencies:
-      - target: Launcher
+      - target: Intern
 schemes:
-  Launcher:
+  Intern:
     build:
       targets:
-        Launcher: all
-        LauncherTests: [test]
+        Intern: all
+        InternTests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - LauncherTests
+        - InternTests

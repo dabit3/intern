@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class LauncherModel: ObservableObject {
+final class InternModel: ObservableObject {
   static let readyThreshold = 0.6
   static let certainTargetThreshold = 0.9
   static let certainSetThreshold = 0.75
@@ -117,9 +117,9 @@ final class LauncherModel: ObservableObject {
     return []
   }
 
-  var availableActions: [LauncherAction] {
+  var availableActions: [InternAction] {
     guard let candidate = topHit?.candidate else { return [] }
-    var actions: [LauncherAction] = [.open]
+    var actions: [InternAction] = [.open]
     if case .file = candidate.payload { actions.append(.preview) }
     if candidate.fileURL != nil { actions.append(.reveal) }
     if Executor.copyText(candidate) != nil { actions.append(.copy) }
@@ -140,7 +140,7 @@ final class LauncherModel: ObservableObject {
     performAction(availableActions[actionSelection])
   }
 
-  func performAction(_ action: LauncherAction) {
+  func performAction(_ action: InternAction) {
     switch action {
     case .open: executeSelection()
     case .preview: previewSelection()
