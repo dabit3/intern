@@ -9,7 +9,7 @@ enum Fuzzy {
     "from", "for", "with", "all", "every", "everything", "any", "and", "was", "were", "been",
     "have", "had", "ive", "did", "about", "at", "page", "pages", "site", "sites", "stuff",
     "thing", "things", "read", "looked", "saw", "some", "those", "these", "them", "this",
-    "opened", "used", "last", "edited", "modified", "working", "worked",
+    "opened", "used", "last", "edited", "modified", "working", "worked", "we", "our", "us",
   ]
 
   static func tokens(_ text: String) -> [String] {

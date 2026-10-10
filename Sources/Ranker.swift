@@ -44,7 +44,8 @@ enum Ranker {
   ]
   private static let recencyWords: Set<String> = [
     "latest", "newest", "recent", "recently", "most", "downloaded", "download",
-    "added", "opened", "used", "modified", "edited", "visited",
+    "added", "opened", "used", "modified", "edited", "visited", "created", "made", "saved",
+    "exported", "rendered", "recorded", "generated",
   ]
   private static let fileWords: Set<String> = ["file", "files", "document", "documents"]
   private static let linkWords: Set<String> = ["link", "links", "page", "pages", "site", "sites"]
@@ -188,8 +189,14 @@ enum Ranker {
       } else {
         // A learned alias (the user picked this item for exactly this query before) counts as
         // a strong match even when the words differ; other habits only strengthen real matches.
-        guard lexical > 0 || boost >= aliasBoost else { continue }
-        let relevance = max(lexical, boost >= aliasBoost ? 0.7 : 0)
+        // A typed or dated file request ("the facebook videos we made last night") keeps every
+        // file that passed the type and window checks above, even when the describing words
+        // match nothing, so Jev can judge them by folder and age. Matching rows still lead.
+        let described =
+          lexical == 0 && hasRecency && (window != nil || !extensions.isEmpty)
+          && SearchScope.files.includes(candidate) && age != nil
+        guard lexical > 0 || boost >= aliasBoost || described else { continue }
+        let relevance = max(lexical, boost >= aliasBoost ? 0.7 : 0, described ? floor + 0.01 : 0)
         score = lexical == 1 ? 1 : min(0.99, relevance + boost)
       }
       if score >= floor { scored.append((candidate, score, age ?? .infinity)) }

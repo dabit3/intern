@@ -31,7 +31,13 @@ struct LocalIndex: Sendable {
     guard !Task.isCancelled else { return LocalIndex(candidates: []) }
     var candidates: [Candidate] = []
     candidates.append(contentsOf: scanApps(fileManager: fileManager))
-    candidates.append(contentsOf: scanFiles(fileManager: fileManager, now: now))
+    let files = scanFiles(fileManager: fileManager, now: now)
+    candidates.append(contentsOf: files)
+    let known = Set(files.map(\.id))
+    candidates.append(
+      contentsOf: scanRecentHomeFiles(fileManager: fileManager, now: now).filter {
+        !known.contains($0.id)
+      })
     guard !Task.isCancelled else { return LocalIndex(candidates: candidates) }
     candidates.append(contentsOf: SystemToggle.allCases.map(\.candidate))
     candidates.append(contentsOf: scanShortcuts())
@@ -207,6 +213,63 @@ struct LocalIndex: Sendable {
       }
     }
     return files
+  }
+
+  /// Recent files anywhere under the home folder, so "the videos we made last night" finds a
+  /// render in ~/projects/ads/ without Spotlight and without its name matching. Only user-facing
+  /// types (media, documents, images, archives) changed in the last `homeRecentDays` are kept.
+  static let homeRecentDays = 30.0
+  static let maxHomeFiles = 3_000
+  static let maxHomeScannedEntries = 250_000
+  static let homeSkippedFolderNames: Set<String> = [
+    "applications", "downloads", "desktop", "documents", "dist", "build", "out", "target",
+    "vendor", "coverage", "pods", "site-packages",
+  ]
+  static let homeFileExtensions: Set<String> = [
+    "mov", "mp4", "m4v", "mkv", "webm", "mp3", "m4a", "wav", "aiff", "png", "jpg", "jpeg", "gif",
+    "heic", "webp", "pdf", "doc", "docx", "pages", "ppt", "pptx", "key", "xls", "xlsx", "numbers",
+    "csv", "zip", "psd", "fig", "sketch", "ai", "dmg",
+  ]
+
+  static func scanRecentHomeFiles(fileManager: FileManager, now: Date) -> [Candidate] {
+    let home = fileManager.homeDirectoryForCurrentUser
+    let keys: [URLResourceKey] = [
+      .isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey,
+    ]
+    guard
+      let enumerator = fileManager.enumerator(
+        at: home, includingPropertiesForKeys: keys,
+        options: [.skipsHiddenFiles, .skipsPackageDescendants])
+    else { return [] }
+    let cutoff = now.addingTimeInterval(-homeRecentDays * 86_400)
+    var inspected = 0
+    var recent: [(url: URL, modified: Date)] = []
+    while let url = enumerator.nextObject() as? URL {
+      guard !Task.isCancelled, inspected < maxHomeScannedEntries else { break }
+      inspected += 1
+      let name = url.lastPathComponent.lowercased()
+      guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
+      if values.isDirectory == true {
+        if skippedFolderNames.contains(name)
+          || homeSkippedFolderNames.contains(name) || name.hasSuffix(".app")
+          || values.isSymbolicLink == true || enumerator.level > maxScanDepth
+        {
+          enumerator.skipDescendants()
+        }
+        continue
+      }
+      guard values.isRegularFile == true, values.isSymbolicLink != true,
+        homeFileExtensions.contains(url.pathExtension.lowercased()),
+        let modified = values.contentModificationDate, modified >= cutoff
+      else { continue }
+      recent.append((url, modified))
+    }
+    recent.sort { $0.modified > $1.modified }
+    return recent.prefix(maxHomeFiles).map { entry in
+      let relative = entry.url.path.dropFirst(home.path.count + 1)
+      let folder = relative.split(separator: "/").first.map(String.init) ?? "Home"
+      return fileCandidate(url: entry.url, folder: folder, now: now, readSpotlightMetadata: false)
+    }
   }
 
   static func recentFiles(_ candidates: [Candidate]) -> [Candidate] {
@@ -421,7 +484,14 @@ actor LocalIndexScanner {
     }
     var candidates = LocalIndex.scanApps(fileManager: fileManager)
     guard !Task.isCancelled else { return candidates }
-    candidates.append(contentsOf: LocalIndex.scanFiles(fileManager: fileManager, now: now))
+    let files = LocalIndex.scanFiles(fileManager: fileManager, now: now)
+    candidates.append(contentsOf: files)
+    guard !Task.isCancelled else { return candidates }
+    let known = Set(files.map(\.id))
+    candidates.append(
+      contentsOf: LocalIndex.scanRecentHomeFiles(fileManager: fileManager, now: now).filter {
+        !known.contains($0.id)
+      })
     guard !Task.isCancelled else { return candidates }
     candidates.append(contentsOf: SystemToggle.allCases.map(\.candidate))
     candidates.append(contentsOf: LocalIndex.scanShortcuts())
